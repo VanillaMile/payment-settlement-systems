@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  postgres-rtp:
+    image: postgres:15
+    container_name: rtp_db
+    environment:
+      POSTGRES_USER: rtp_user
+      POSTGRES_PASSWORD: rtp_password
+      POSTGRES_DB: rtp_database
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_rtp_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rtp_user -d rtp_database"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  rtp-backend:
+    build: 
+      context: ./rtp-backend
+    container_name: rtp_api
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://rtp_user:rtp_password@postgres-rtp:5432/rtp_database
+    depends_on:
+      # oczekiwanie na sygnal od bazy
+      postgres-rtp:
+        condition: service_healthy
+    volumes:
+      - ./rtp-backend:/app
+
+  # Kontener z interfejsem React
+  rtp-frontend:
+    build:
+      context: ./rtp-frontend
+    container_name: rtp_gui
+    ports:
+      - "3000:3000"
+    depends_on:
+      - rtp-backend
+    volumes:
+      - ./rtp-frontend:/app
+      - /app/node_modules
+
+volumes:
+  postgres_rtp_data:

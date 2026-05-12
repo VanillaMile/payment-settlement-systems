@@ -1,0 +1,49 @@
+# =========================
+# Node.js / Frontend (React + Vite)
+# =========================
+rtp-frontend/node_modules/
+node_modules/
+dist/
+dist-ssr/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json  # (opcjonalnie, zależy czy używasz npm czy yarn, zazwyczaj się go zostawia, ale npm-debug usuwa)
+
+# =========================
+# Python / Backend (FastAPI)
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.venv/
+.pytest_cache/
+
+# =========================
+# Baza Danych / Docker
+# =========================
+# Ignorujemy lokalne dane bazy PostgreSQL (żeby nie wrzucać gb danych do repo)
+postgres_rtp_data/
+*.log
+
+# =========================
+# Zmienne środowiskowe (Sekrety)
+# =========================
+# Nigdy nie wysyłaj plików .env do repozytorium!
+.env
+.env.*
+!.env.example
+
+# =========================
+# IDE i System Operacyjny
+# =========================
+.DS_Store
+.DS_Store?
+._*
+.Trashes
+.idea/
+.vscode/
+*.swp
