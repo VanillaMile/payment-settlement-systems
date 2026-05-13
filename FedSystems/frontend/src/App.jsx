@@ -346,7 +346,7 @@ function HomePage({
                     <div className="row g-3">
                       <div className="col-12 col-md-6">
                         <label className="form-label fw-semibold" htmlFor="add-bank-primary-rtn">
-                          Primary RTN (9-digit Routing Number)
+                          Primary RTN (9-digit Routing Number) Warning: currently the system does not validate if the RTN is actually valid.
                         </label>
                         <input
                           id="add-bank-primary-rtn"
@@ -363,7 +363,7 @@ function HomePage({
 
                       <div className="col-12 col-md-6">
                         <label className="form-label fw-semibold" htmlFor="add-bank-ein">
-                          Federal EIN (9-digit Routing Number)
+                          Federal EIN (9-digit FEIN Number)
                         </label>
                         <input
                           id="add-bank-ein"
