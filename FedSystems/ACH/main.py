@@ -309,8 +309,8 @@ async def current_balance(master_account_rtn: str):
         logger.exception("Failed to calculate current balance: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
     
-@ach.post("/api/add-funds-transfer")
-async def add_funds_transfer(transfer_data: dict):
+@ach.post("/api/funds-transfer")
+async def funds_transfer(transfer_data: dict):
     """Create transfer ledger entries and update running balances.
 
     Required JSON keys:

@@ -15,6 +15,7 @@ function HomePage({
   apiUrl,
   backendStatus,
   onRefresh,
+  onBankAdded,
   sftpUsers,
   sftpLoading,
   achBanks,
@@ -22,6 +23,132 @@ function HomePage({
   bankBalances,
   bankBalanceLoadingByRtn,
 }) {
+  const [isAddBankOpen, setIsAddBankOpen] = useState(false)
+  const [addBankSubmitting, setAddBankSubmitting] = useState(false)
+  const [addBankError, setAddBankError] = useState('')
+  const [addBankForm, setAddBankForm] = useState(() => ({
+    primary_routing_transit_number: '',
+    legal_name: '',
+    federal_employer_identification_number: '',
+    master_account_rtn: '',
+    net_debit_cap: '',
+    sftp_username: '',
+  }))
+
+  useEffect(() => {
+    if (!isAddBankOpen) {
+      return
+    }
+
+    setAddBankForm((current) => {
+      if (current.sftp_username && sftpUsers.some((user) => user.username === current.sftp_username)) {
+        return current
+      }
+
+      return {
+        ...current,
+        sftp_username: sftpUsers[0]?.username || '',
+      }
+    })
+  }, [isAddBankOpen, sftpUsers])
+
+  const openAddBankDialog = () => {
+    setAddBankError('')
+    setAddBankForm({
+      primary_routing_transit_number: '',
+      legal_name: '',
+      federal_employer_identification_number: '',
+      master_account_rtn: '',
+      net_debit_cap: '',
+      sftp_username: sftpUsers[0]?.username || '',
+    })
+    setIsAddBankOpen(true)
+  }
+
+  const closeAddBankDialog = () => {
+    if (addBankSubmitting) {
+      return
+    }
+
+    setIsAddBankOpen(false)
+    setAddBankError('')
+  }
+
+  const updateAddBankForm = (field, value) => {
+    setAddBankForm((current) => ({
+      ...current,
+      [field]: value,
+    }))
+  }
+
+  const submitAddBankForm = async (event) => {
+    event.preventDefault()
+
+    if (
+      !addBankForm.primary_routing_transit_number ||
+      !addBankForm.legal_name.trim() ||
+      !addBankForm.federal_employer_identification_number ||
+      !addBankForm.master_account_rtn ||
+      !addBankForm.net_debit_cap ||
+      !addBankForm.sftp_username
+    ) {
+      setAddBankError('Fill in all fields before adding the bank.')
+      return
+    }
+
+    const payload = {
+      primary_routing_transit_number: Number(addBankForm.primary_routing_transit_number),
+      legal_name: addBankForm.legal_name.trim(),
+      federal_employer_identification_number: Number(addBankForm.federal_employer_identification_number),
+      master_account_rtn: Number(addBankForm.master_account_rtn),
+      net_debit_cap: Number(addBankForm.net_debit_cap),
+      sftp_username: addBankForm.sftp_username,
+    }
+
+    if (
+      Number.isNaN(payload.primary_routing_transit_number) ||
+      Number.isNaN(payload.federal_employer_identification_number) ||
+      Number.isNaN(payload.master_account_rtn) ||
+      Number.isNaN(payload.net_debit_cap)
+    ) {
+      setAddBankError('Enter valid numeric values for the routing and balance fields.')
+      return
+    }
+
+    setAddBankSubmitting(true)
+    setAddBankError('')
+
+    try {
+      const response = await fetch(`${apiUrl}/api/add-ach-bank`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      })
+
+      if (!response.ok) {
+        let errorMessage = `HTTP ${response.status}`
+
+        try {
+          const errorData = await response.json()
+          errorMessage = errorData?.message || errorData?.detail || errorMessage
+        } catch {
+          // Keep the HTTP status message when the backend does not return JSON.
+        }
+
+        throw new Error(errorMessage)
+      }
+
+      await onBankAdded()
+      setIsAddBankOpen(false)
+    } catch (error) {
+      setAddBankError(error.message || 'Failed to add bank')
+    } finally {
+      setAddBankSubmitting(false)
+    }
+  }
+
   const formatCentsToUsd = (value) => {
     const numeric = Number(value ?? 0)
     if (Number.isNaN(numeric)) return '$0.00'
@@ -139,6 +266,9 @@ function HomePage({
                 <div className="card-body p-3 p-lg-4">
                   <div className="d-flex justify-content-between align-items-center mb-3">
                     <div className="text-uppercase text-body-secondary small fw-semibold">Registered Banks</div>
+                    <button type="button" className="btn btn-primary btn-sm fw-semibold" onClick={openAddBankDialog}>
+                      Register New Bank
+                    </button>
                   </div>
 
                   {achBanksLoading ? (
@@ -191,6 +321,151 @@ function HomePage({
               </div>
             </div>
           </div>
+
+          {isAddBankOpen ? (
+            <div className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center p-3" style={{ zIndex: 1080 }}>
+              <button
+                type="button"
+                className="position-absolute top-0 start-0 w-100 h-100 border-0 bg-dark"
+                style={{ opacity: 0.55 }}
+                aria-label="Close add bank dialog"
+                onClick={closeAddBankDialog}
+              />
+
+              <div className="card shadow-lg border-0 rounded-4 position-relative w-100" style={{ maxWidth: '44rem' }}>
+                <div className="card-header bg-white border-0 pt-4 px-4 px-lg-4 pb-0 d-flex justify-content-between align-items-start gap-3">
+                  <div>
+                    <div className="text-uppercase text-body-secondary small fw-semibold">Registered Banks</div>
+                    <h2 className="h4 fw-bold mb-0 mt-1">Add New Bank</h2>
+                  </div>
+                  <button type="button" className="btn-close" aria-label="Close" onClick={closeAddBankDialog} />
+                </div>
+
+                <form onSubmit={submitAddBankForm}>
+                  <div className="card-body p-4 p-lg-4">
+                    <div className="row g-3">
+                      <div className="col-12 col-md-6">
+                        <label className="form-label fw-semibold" htmlFor="add-bank-primary-rtn">
+                          Primary RTN (9-digit Routing Number)
+                        </label>
+                        <input
+                          id="add-bank-primary-rtn"
+                          className="form-control"
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={addBankForm.primary_routing_transit_number}
+                          onChange={(event) => updateAddBankForm('primary_routing_transit_number', event.target.value)}
+                          disabled={addBankSubmitting}
+                          required
+                        />
+                      </div>
+
+                      <div className="col-12 col-md-6">
+                        <label className="form-label fw-semibold" htmlFor="add-bank-ein">
+                          Federal EIN (9-digit Routing Number)
+                        </label>
+                        <input
+                          id="add-bank-ein"
+                          className="form-control"
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={addBankForm.federal_employer_identification_number}
+                          onChange={(event) => updateAddBankForm('federal_employer_identification_number', event.target.value)}
+                          disabled={addBankSubmitting}
+                          required
+                        />
+                      </div>
+
+                      <div className="col-12">
+                        <label className="form-label fw-semibold" htmlFor="add-bank-legal-name">
+                          Legal Name
+                        </label>
+                        <input
+                          id="add-bank-legal-name"
+                          className="form-control"
+                          type="text"
+                          value={addBankForm.legal_name}
+                          onChange={(event) => updateAddBankForm('legal_name', event.target.value)}
+                          disabled={addBankSubmitting}
+                          required
+                        />
+                      </div>
+
+                      <div className="col-12 col-md-6">
+                        <label className="form-label fw-semibold" htmlFor="add-bank-master-rtn">
+                          Master RTN (Usually the same as primary RTN, but can be different for some banks)
+                        </label>
+                        <input
+                          id="add-bank-master-rtn"
+                          className="form-control"
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={addBankForm.master_account_rtn}
+                          onChange={(event) => updateAddBankForm('master_account_rtn', event.target.value)}
+                          disabled={addBankSubmitting}
+                          required
+                        />
+                      </div>
+
+                      <div className="col-12 col-md-6">
+                        <label className="form-label fw-semibold" htmlFor="add-bank-net-debit-cap">
+                          Net Debit Cap (in cents)
+                        </label>
+                        <input
+                          id="add-bank-net-debit-cap"
+                          className="form-control"
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={addBankForm.net_debit_cap}
+                          onChange={(event) => updateAddBankForm('net_debit_cap', event.target.value)}
+                          disabled={addBankSubmitting}
+                          required
+                        />
+                      </div>
+
+                      <div className="col-12">
+                        <label className="form-label fw-semibold" htmlFor="add-bank-sftp-username">
+                          SFTP Usernames (Although multiple banks can share the same SFTP user, it's not really recomended to do so. If you need to add a new SFTP user, check out the readme.)
+                        </label>
+                        <select
+                          id="add-bank-sftp-username"
+                          className="form-select"
+                          value={addBankForm.sftp_username}
+                          onChange={(event) => updateAddBankForm('sftp_username', event.target.value)}
+                          disabled={addBankSubmitting || sftpUsers.length === 0}
+                          required
+                        >
+                          <option value="" disabled>
+                            {sftpUsers.length === 0 ? 'No SFTP users available' : 'Select an SFTP user'}
+                          </option>
+                          {sftpUsers.map((user) => (
+                            <option key={user.username} value={user.username}>
+                              {user.username}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {addBankError ? <div className="alert alert-danger mt-3 mb-0">{addBankError}</div> : null}
+                  </div>
+
+                  <div className="card-footer bg-white border-0 px-4 pb-4 pt-0 d-flex flex-column flex-sm-row justify-content-end gap-2">
+                    <button type="button" className="btn btn-outline-secondary" onClick={closeAddBankDialog} disabled={addBankSubmitting}>
+                      Cancel
+                    </button>
+                    <button type="submit" className="btn btn-primary" disabled={addBankSubmitting || sftpUsers.length === 0}>
+                      {addBankSubmitting ? 'Adding Bank...' : 'Add Bank'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          ) : null}
         </div>
       </section>
     </main>
@@ -238,6 +513,22 @@ function App() {
   const [achBanksLoading, setAchBanksLoading] = useState(false)
   const [bankBalances, setBankBalances] = useState({})
   const [bankBalanceLoadingByRtn, setBankBalanceLoadingByRtn] = useState({})
+
+  const loadAchBanks = () => {
+    if (page !== pages.home) {
+      return
+    }
+
+    setAchBanksLoading(true)
+    fetch(`${apiUrl}/api/ach-banks`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.json()
+      })
+      .then((data) => setAchBanks(data.banks || []))
+      .catch(() => setAchBanks([]))
+      .finally(() => setAchBanksLoading(false))
+  }
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -303,15 +594,7 @@ function App() {
   useEffect(() => {
     if (page !== pages.home) return
 
-    setAchBanksLoading(true)
-    fetch(`${apiUrl}/api/ach-banks`)
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        return res.json()
-      })
-      .then((data) => setAchBanks(data.banks || []))
-      .catch(() => setAchBanks([]))
-      .finally(() => setAchBanksLoading(false))
+    loadAchBanks()
   }, [apiUrl, page])
 
   useEffect(() => {
@@ -401,6 +684,7 @@ function App() {
         achBanksLoading={achBanksLoading}
         bankBalances={bankBalances}
         bankBalanceLoadingByRtn={bankBalanceLoadingByRtn}
+        onBankAdded={loadAchBanks}
       />
     )
   }
