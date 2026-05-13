@@ -4,6 +4,7 @@ CREATE TABLE bank_details (
   federal_employer_identification_number NUMERIC,
   master_account_rtn NUMERIC UNIQUE,
   net_debit_cap NUMERIC,
+  sftp_username VARCHAR(255),
   server_certificate_expiry TIMESTAMP
 );
 
@@ -16,7 +17,8 @@ CREATE TABLE running_balance (
 CREATE TABLE central_ledger_entries (
   entry_id NUMERIC PRIMARY KEY,
   master_account_rtn NUMERIC REFERENCES bank_details(master_account_rtn),
-  activity_source_rtn NUMERIC REFERENCES bank_details(master_account_rtn),
+  activity_source_rtn NUMERIC,
+  amount_cents NUMERIC,
   rail_type VARCHAR(255),
   external_ref_id VARCHAR(255),
   effective_date TIMESTAMP

@@ -54,7 +54,7 @@ services:
     ports:
       - "${REACT_PORT}:5173"
     environment:
-      - VITE_API_BASE_URL=http://localhost:${APP_ACH_PORT}
+      - VITE_ACH_API_BASE_URL=http://localhost:${APP_ACH_PORT}
     depends_on:
       - ach-backend
     volumes:
