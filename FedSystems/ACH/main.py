@@ -21,7 +21,11 @@ logger = logging.getLogger(__name__)
 # Load .env if present
 load_dotenv()
 
-# --- Pydantic Models for Request/Response Schemas ---
+# --- FRB Configuration ---
+FRB_ROUTING_NUMBER = os.environ.get("FRB_ROUTING_NUMBER", "090000515")
+FRB_LEGAL_NAME = os.environ.get("FRB_LEGAL_NAME", "Federal Reserve Bank")
+
+logger.info("FRB Configuration: RTN=%s, Legal Name=%s", FRB_ROUTING_NUMBER, FRB_LEGAL_NAME)
 
 class AddAchBankRequest(BaseModel):
     primary_routing_transit_number: str
@@ -57,7 +61,7 @@ class FundsTransferRequest(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
-                "sender_master_account_rtn": "090000515",
+                "sender_master_account_rtn": FRB_ROUTING_NUMBER,
                 "receiver_master_account_rtn": "031000021",
                 "amount_cents": 1500050,
                 "rail_type": "FedWire",
@@ -107,6 +111,8 @@ async def root():
 @ach.get("/health")
 async def health():
     return {"status": "ok",
+            "frb_routing_number": FRB_ROUTING_NUMBER,
+            "frb_legal_name": FRB_LEGAL_NAME,
             "cors_allowed_origins": allow_origins} # TODO: Remove later
 
 @ach.get("/env")

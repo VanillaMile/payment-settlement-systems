@@ -24,10 +24,12 @@ services:
     ports:
       - "${APP_ACH_PORT}:8000"
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:${POSTGRES_PORT}/${POSTGRES_DB}
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - SFTP_HOST_PORT=${SFTP_ACH_HOST_PORT}
       - REACT_PORT=${REACT_PORT}
       - VITE_PORT=${VITE_PORT}
+      - FRB_ROUTING_NUMBER=${FRB_ROUTING_NUMBER}
+      - FRB_LEGAL_NAME=${FRB_LEGAL_NAME}
     depends_on:
       - postgres
     volumes:

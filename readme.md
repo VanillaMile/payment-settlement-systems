@@ -12,7 +12,11 @@
 
 ## FRB, .ACH, .ACK
 
-Default **FRB RTN: 090000515** (You can change it in `.env` but it must be a valid rtn number)
+Default **FRB RTN: 090000515**
+
+Default **FRB Legal name: FRB Tungsten**
+
+ (You can change it in `.env` but it must be a valid rtn number)
 
 RTN must
 - Be a nine-digit number
@@ -22,9 +26,11 @@ RTN must
         -  (3(0 + 0 + 5) + 7(9 + 0 + 1) + (0 + 0 + 5))
         - (15 + 70 + 5) mod 10 = 90 mod 10 = 0
 
-1. Example of .ACH file (you can use https://validator.ach-pro.com/ to highlight what each value means):
+### .ACH
+
+Example of .ACH file (you can use https://validator.ach-pro.com/ to highlight what each value means):
 ```
-101 090000515 0401040122604050900A094101FRB Miku               Baguette Bank                  
+101 090000515 0401040122604050900A094101FRB Tungsten           Baguette Bank                  
 5220Baguette store                      1313131310PPDLEEK PAY        260406   1040104010000001
 62201010101239               0000015075               Leek store              0040104010000001
 822000000100010101010000000000000000000150751313131310                         040104010000001
@@ -37,9 +43,15 @@ RTN must
 ```
 File has `.ach` extension.
 
+After each session banks will recive `.ach` file in `outbound` directory containing transactions directed to them or their clients.
+
+When sending files to ACH network, immediate destination will be FRB(federal reserve bank) and immediate origin will be your bank. In return `.ach` files this will be switched.
+
 Guide: https://achdevguide.nacha.org/ach-file-overview
 
-2. Example of `.ack` file (this is what bank will get after `.ach` is checked, name will be the same as `.ach` but with `.ack` extension instead and inside banks `inbound` folder)
+### .ACK
+
+Example of `.ack` file (this is what bank will get after `.ach` is checked, name will be the same as `.ach` but with `.ack` extension instead. Uploded into banks `inbound` folder)
 
 - Successful
     - [FH] -> header line:
@@ -83,8 +95,6 @@ E,L,5,5000,Invalid Account
 E,L,6,5000,Invalid Account
 ```
 
-3. After each session banks will recive `.ach` file in `outbound` directory containing transactions directed to them or their clients.
-
 ## How to start up the server
 
 Prerequisites:
@@ -92,7 +102,7 @@ Prerequisites:
 - Docker
 - ssh-keygen (Usually included with git for windows, test `ssh-keygen` in terminal)
 
-1. Open `.env` and fill in:
+1. (Only once) Open `.env` and fill in:
     - Postgres data
     - Banks SFTP accounts (Change the names to what you want or leave as is) (for adding or removing banks see [How to manage banks SFTP accounts](#how-to-manage-banks-sftp-accounts)) (Having more SFTP accounts than banks isn't a problem, for a bank to use ACH network a separate registration is required)
 
@@ -105,7 +115,7 @@ Prerequisites:
 ## How to register a bank
 
 0. Start the server [How to start up the server](#how-to-start-up-the-server)
-1. Go to frontend control panel (default url is http://localhost:3000/ `REACT_PORT` in `.env`)
+1. Go to frontend control panel (default url is http://localhost:3310/ `REACT_PORT` in `.env`)
 2. You should see `Fed Systems Dashboard` with a list of SFTP users.
 3. In registered banks click `register new bank` and fill in the data.
 
@@ -208,6 +218,13 @@ You don't need to keys regenerate here.
 
 With default `.env.example`:
 
-Backend api docs can be found at (http://localhost:8001/docs)
+Backend api docs can be found at (http://localhost:8310/docs)
 
-Frontend panel available at (http://localhost:3000/)
+Frontend panel available at (http://localhost:3310/)
+
+SFTP server at (localhost:2221)
+
+Postgres database at (localhost:5439):
+- Username: postgres
+- Password: Password123
+- Database: fed_systems_db
