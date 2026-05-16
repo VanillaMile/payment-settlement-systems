@@ -35,6 +35,18 @@ function HomePage({
     sftp_username: '',
   }))
 
+  const [isTransferOpen, setIsTransferOpen] = useState(false)
+  const [transferSubmitting, setTransferSubmitting] = useState(false)
+  const [transferError, setTransferError] = useState('')
+  const [transferForm, setTransferForm] = useState(() => ({
+    sender_master_account_rtn: '090000515',
+    receiver_master_account_rtn: '',
+    amount_cents: '',
+    rail_type: 'FedWire',
+    external_ref_id: '',
+    effective_date: '',
+  }))
+
   useEffect(() => {
     if (!isAddBankOpen) {
       return
@@ -74,6 +86,92 @@ function HomePage({
     setAddBankError('')
   }
 
+  const openTransferDialog = (bankRtn) => {
+    setTransferError('')
+    setTransferForm({
+      sender_master_account_rtn: '090000515',
+      receiver_master_account_rtn: bankRtn,
+      amount_cents: '',
+      rail_type: 'FedWire',
+      external_ref_id: '',
+      effective_date: '',
+    })
+    setIsTransferOpen(true)
+  }
+
+  const closeTransferDialog = () => {
+    if (transferSubmitting) {
+      return
+    }
+
+    setIsTransferOpen(false)
+    setTransferError('')
+  }
+
+  const updateTransferForm = (field, value) => {
+    setTransferForm((current) => ({
+      ...current,
+      [field]: value,
+    }))
+  }
+
+  const submitTransferForm = async (event) => {
+    event.preventDefault()
+
+    if (!transferForm.amount_cents) {
+      setTransferError('Amount is required.')
+      return
+    }
+
+    const amountValue = parseFloat(transferForm.amount_cents)
+    if (isNaN(amountValue) || amountValue <= 0) {
+      setTransferError('Amount must be a positive number.')
+      return
+    }
+
+    const payload = {
+      sender_master_account_rtn: transferForm.sender_master_account_rtn,
+      receiver_master_account_rtn: transferForm.receiver_master_account_rtn,
+      amount_cents: amountValue,
+      rail_type: transferForm.rail_type,
+      external_ref_id: transferForm.external_ref_id.trim() || undefined,
+      effective_date: transferForm.effective_date.trim() || undefined,
+    }
+
+    setTransferSubmitting(true)
+    setTransferError('')
+
+    try {
+      const response = await fetch(`${apiUrl}/api/funds-transfer`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      })
+
+      if (!response.ok) {
+        let errorMessage = `HTTP ${response.status}`
+
+        try {
+          const errorData = await response.json()
+          errorMessage = errorData?.message || errorData?.detail || errorMessage
+        } catch {
+          // Keep the HTTP status message when the backend does not return JSON.
+        }
+
+        throw new Error(errorMessage)
+      }
+
+      await onBankAdded()
+      setIsTransferOpen(false)
+    } catch (error) {
+      setTransferError(error.message || 'Failed to transfer funds')
+    } finally {
+      setTransferSubmitting(false)
+    }
+  }
+
   const updateAddBankForm = (field, value) => {
     setAddBankForm((current) => ({
       ...current,
@@ -99,19 +197,19 @@ function HomePage({
     const payload = {
       primary_routing_transit_number: addBankForm.primary_routing_transit_number.trim(),
       legal_name: addBankForm.legal_name.trim(),
-      federal_employer_identification_number: Number(addBankForm.federal_employer_identification_number),
+      federal_employer_identification_number: addBankForm.federal_employer_identification_number.trim(),
       master_account_rtn: addBankForm.master_account_rtn.trim(),
-      net_debit_cap: Number(addBankForm.net_debit_cap),
+      net_debit_cap: addBankForm.net_debit_cap.trim(),
       sftp_username: addBankForm.sftp_username,
     }
 
     if (
       !/^\d{9}$/.test(payload.primary_routing_transit_number) ||
       !/^\d{9}$/.test(payload.master_account_rtn) ||
-      Number.isNaN(payload.federal_employer_identification_number) ||
-      Number.isNaN(payload.net_debit_cap)
+      !/^\d{9}$/.test(payload.federal_employer_identification_number) ||
+      !/^\d+$/.test(payload.net_debit_cap)
     ) {
-      setAddBankError('Enter valid 9-digit routing numbers and numeric values for the balance fields.')
+      setAddBankError('Enter valid 9-digit routing numbers, valid 9-digit FEIN, and numeric net debit cap.')
       return
     }
 
@@ -195,14 +293,14 @@ function HomePage({
 
           <div className="row g-3 mt-1">
             <div className="col-12 col-lg-6">
-              <div className="card h-100 border-0 bg-body-tertiary rounded-4">
+              <a href={apiUrl + '/docs'} target="_blank" rel="noopener noreferrer" className="card h-100 border-0 bg-body-tertiary rounded-4 text-decoration-none api-docs-link">
                 <div className="card-body p-3 p-lg-4">
                   <div className="text-uppercase text-body-secondary small fw-semibold mb-2">
                     ACH API Endpoint
                   </div>
                   <div className="fw-semibold text-break">{apiUrl}</div>
                 </div>
-              </div>
+              </a>
             </div>
             <div className="col-12 col-lg-6">
               <div className="card h-100 border-0 rounded-4" style={{ backgroundColor: '#f4effc' }}>
@@ -311,6 +409,16 @@ function HomePage({
                                 <div><span className="text-body-secondary">Type:</span> {bank.participant_type || '-'}</div>
                                 <div><span className="text-body-secondary">Restricted:</span> {bank.restricted ? 'Yes' : 'No'}</div>
                               </div>
+
+                              {bank.master_account_rtn && (
+                                <button
+                                  type="button"
+                                  className="btn btn-primary btn-sm mt-3 w-100"
+                                  onClick={() => openTransferDialog(bank.master_account_rtn)}
+                                >
+                                  Add Funds
+                                </button>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -462,6 +570,136 @@ function HomePage({
                     </button>
                     <button type="submit" className="btn btn-primary" disabled={addBankSubmitting || sftpUsers.length === 0}>
                       {addBankSubmitting ? 'Adding Bank...' : 'Add Bank'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          ) : null}
+
+          {isTransferOpen ? (
+            <div className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center p-3" style={{ zIndex: 1080 }}>
+              <button
+                type="button"
+                className="position-absolute top-0 start-0 w-100 h-100 border-0 bg-dark"
+                style={{ opacity: 0.55 }}
+                aria-label="Close transfer dialog"
+                onClick={closeTransferDialog}
+              />
+
+              <div className="card shadow-lg border-0 rounded-4 position-relative w-100" style={{ maxWidth: '44rem' }}>
+                <div className="card-header bg-white border-0 pt-4 px-4 px-lg-4 pb-0 d-flex justify-content-between align-items-start gap-3">
+                  <div>
+                    <div className="text-uppercase text-body-secondary small fw-semibold">Fund Transfer - FedWire pretend transfer</div>
+                    <h2 className="h4 fw-bold mb-0 mt-1">Add Funds</h2>
+                    <div className="small text-muted mt-1">This form simulates a FedWire transfer by allowing you to transfer funds from the default sender bank (with RTN 090000515) to any receiver bank registered in the system. Note that this does not actually initiate a real FedWire transfer. Your bank will be allowed to use ACH until hitting its net debit cap, after that the system will notify the bank, and restrict the bank from sending more ACH transactions until the balance is back under the net debit cap. This form allows you to simulate incoming funds to a bank.</div>
+                    <div className="small text-muted">For FedWire one of the banks must be a registered bank.</div>
+                  </div>
+                  <button type="button" className="btn-close" aria-label="Close" onClick={closeTransferDialog} />
+                </div>
+
+                <form onSubmit={submitTransferForm}>
+                  <div className="card-body p-4 p-lg-4">
+                    <div className="row g-3">
+                      <div className="col-12 col-md-6">
+                        <label className="form-label fw-semibold" htmlFor="transfer-sender-rtn">
+                          Sender RTN
+                        </label>
+                        <input
+                          id="transfer-sender-rtn"
+                          className="form-control"
+                          type="text"
+                          value={transferForm.sender_master_account_rtn}
+                          disabled
+                          required
+                        />
+                        <small className="text-muted">Default: 090000515</small>
+                      </div>
+
+                      <div className="col-12 col-md-6">
+                        <label className="form-label fw-semibold" htmlFor="transfer-receiver-rtn">
+                          Receiver RTN
+                        </label>
+                        <input
+                          id="transfer-receiver-rtn"
+                          className="form-control"
+                          type="text"
+                          value={transferForm.receiver_master_account_rtn}
+                          disabled
+                          required
+                        />
+                      </div>
+
+                      <div className="col-12 col-md-6">
+                        <label className="form-label fw-semibold" htmlFor="transfer-amount">
+                          Amount (in cents)
+                        </label>
+                        <input
+                          id="transfer-amount"
+                          className="form-control"
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={transferForm.amount_cents}
+                          onChange={(event) => updateTransferForm('amount_cents', event.target.value)}
+                          disabled={transferSubmitting}
+                          required
+                        />
+                      </div>
+
+                      <div className="col-12 col-md-6">
+                        <label className="form-label fw-semibold" htmlFor="transfer-rail">
+                          Rail Type
+                        </label>
+                        <input
+                          id="transfer-rail"
+                          className="form-control"
+                          type="text"
+                          value={transferForm.rail_type}
+                          disabled
+                          required
+                        />
+                        <small className="text-muted">Fixed to FedWire</small>
+                      </div>
+
+                      <div className="col-12">
+                        <label className="form-label fw-semibold" htmlFor="transfer-ref-id">
+                          External Reference ID (optional)
+                        </label>
+                        <input
+                          id="transfer-ref-id"
+                          className="form-control"
+                          type="text"
+                          value={transferForm.external_ref_id}
+                          onChange={(event) => updateTransferForm('external_ref_id', event.target.value)}
+                          disabled={transferSubmitting}
+                        />
+                      </div>
+
+                      <div className="col-12">
+                        <label className="form-label fw-semibold" htmlFor="transfer-effective-date">
+                          Effective Date (optional)
+                        </label>
+                        <input
+                          id="transfer-effective-date"
+                          className="form-control"
+                          type="date"
+                          value={transferForm.effective_date}
+                          onChange={(event) => updateTransferForm('effective_date', event.target.value)}
+                          disabled={transferSubmitting}
+                        />
+                      </div>
+                    </div>
+
+                    {transferError ? <div className="alert alert-danger mt-3 mb-0">{transferError}</div> : null}
+                  </div>
+
+                  <div className="card-footer bg-white border-0 px-4 pb-4 pt-0 d-flex flex-column flex-sm-row justify-content-end gap-2">
+                    <button type="button" className="btn btn-outline-secondary" onClick={closeTransferDialog} disabled={transferSubmitting}>
+                      Cancel
+                    </button>
+                    <button type="submit" className="btn btn-primary" disabled={transferSubmitting}>
+                      {transferSubmitting ? 'Transferring...' : 'Transfer'}
                     </button>
                   </div>
                 </form>

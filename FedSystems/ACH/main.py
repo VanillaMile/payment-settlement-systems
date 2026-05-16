@@ -36,7 +36,7 @@ class AddAchBankRequest(BaseModel):
         json_schema_extra = {
             "example": {
                 "primary_routing_transit_number": "031000021",
-                "legal_name": "Example Bank Corp",
+                "legal_name": "Baguette Bank",
                 "federal_employer_identification_number": "123456789",
                 "master_account_rtn": "031000021",
                 "net_debit_cap": "1000000",
