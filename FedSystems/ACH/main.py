@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
+from typing import Optional
 import re
 import subprocess
 import logging
@@ -19,6 +20,52 @@ logger = logging.getLogger(__name__)
 
 # Load .env if present
 load_dotenv()
+
+# --- Pydantic Models for Request/Response Schemas ---
+
+class AddAchBankRequest(BaseModel):
+    primary_routing_transit_number: str
+    legal_name: str
+    federal_employer_identification_number: str
+    master_account_rtn: str
+    net_debit_cap: str
+    sftp_username: str
+    server_certificate_expiry: Optional[str] = None
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "primary_routing_transit_number": "031000021",
+                "legal_name": "Example Bank Corp",
+                "federal_employer_identification_number": "123456789",
+                "master_account_rtn": "031000021",
+                "net_debit_cap": "1000000",
+                "sftp_username": "baguette-bank",
+                "server_certificate_expiry": "2025-12-31"
+            }
+        }
+
+
+class FundsTransferRequest(BaseModel):
+    sender_master_account_rtn: str
+    receiver_master_account_rtn: str
+    amount_cents: float
+    rail_type: str
+    external_ref_id: Optional[str] = None
+    effective_date: Optional[str] = None
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "sender_master_account_rtn": "090000515",
+                "receiver_master_account_rtn": "031000021",
+                "amount_cents": 1500050,
+                "rail_type": "FedWire",
+                "external_ref_id": "TXN-2026-001",
+                "effective_date": "2026-05-16"
+            }
+        }
+
 ach = FastAPI()
 
 # Simplified CORS origins using ports passed via env (REACT_PORT, VITE_PORT)
@@ -172,7 +219,7 @@ def ach_banks():
     return {"banks": banks}
 
 @ach.post("/api/add-ach-bank")
-async def add_ach_bank(bank_data: dict):
+async def add_ach_bank(bank_data: AddAchBankRequest):
     """Add a new ACH bank to the system.
 
     Expects JSON body with keys (required):
@@ -194,24 +241,27 @@ async def add_ach_bank(bank_data: dict):
         "sftp_username",
     ]
 
+    # Convert Pydantic model to dict for easier access
+    bank_data_dict = bank_data.model_dump()
+
     for r in required:
-        if r not in bank_data or bank_data.get(r) in (None, ""):
+        if r not in bank_data_dict or bank_data_dict.get(r) in (None, ""):
             raise HTTPException(status_code=400, detail=f"Missing required field: {r}")
 
     db_url = os.environ.get("DATABASE_URL")
     if not db_url:
         raise HTTPException(status_code=503, detail="Database not configured")
 
-    prtn = bank_data.get("primary_routing_transit_number")
-    legal_name = bank_data.get("legal_name")
-    feid = bank_data.get("federal_employer_identification_number")
-    master_rtn = bank_data.get("master_account_rtn")
-    net_debit_cap = bank_data.get("net_debit_cap")
-    sftp_username = bank_data.get("sftp_username")
-    server_cert_expiry = bank_data.get("server_certificate_expiry")
+    prtn = bank_data_dict.get("primary_routing_transit_number")
+    legal_name = bank_data_dict.get("legal_name")
+    feid = bank_data_dict.get("federal_employer_identification_number")
+    master_rtn = bank_data_dict.get("master_account_rtn")
+    net_debit_cap = bank_data_dict.get("net_debit_cap")
+    sftp_username = bank_data_dict.get("sftp_username")
+    server_cert_expiry = bank_data_dict.get("server_certificate_expiry")
 
     # sftp_username must match an existing SFTP user
-    sftp_username = bank_data.get("sftp_username")
+    sftp_username = bank_data_dict.get("sftp_username")
     try:
         sftp_resp = await sftp_users()
         valid_users = [u.get("username") for u in sftp_resp.get("sftp_users", [])]
@@ -333,13 +383,13 @@ async def current_balance(master_account_rtn: str):
         raise HTTPException(status_code=500, detail=str(e))
     
 @ach.post("/api/funds-transfer")
-async def funds_transfer(transfer_data: dict):
+async def funds_transfer(transfer_data: FundsTransferRequest):
     """Create transfer ledger entries and update running balances.
 
     Required JSON keys:
       - sender_master_account_rtn
       - receiver_master_account_rtn
-      - amount
+            - amount_cents
       - rail_type
 
     Optional:
@@ -358,31 +408,35 @@ async def funds_transfer(transfer_data: dict):
     required = [
         "sender_master_account_rtn",
         "receiver_master_account_rtn",
-        "amount",
+        "amount_cents",
         "rail_type",
     ]
+    
+    # Convert Pydantic model to dict for easier access
+    transfer_dict = transfer_data.model_dump()
+    
     for r in required:
-        if r not in transfer_data or transfer_data.get(r) in (None, ""):
+        if r not in transfer_dict or transfer_dict.get(r) in (None, ""):
             raise HTTPException(status_code=400, detail=f"Missing required field: {r}")
 
     db_url = os.environ.get("DATABASE_URL")
     if not db_url:
         raise HTTPException(status_code=503, detail="Database not configured")
 
-    sender_master_rtn = transfer_data.get("sender_master_account_rtn")
-    receiver_master_rtn = transfer_data.get("receiver_master_account_rtn")
-    amount = transfer_data.get("amount")
-    rail_type = transfer_data.get("rail_type")
-    external_ref_id = transfer_data.get("external_ref_id")
-    effective_date = transfer_data.get("effective_date", datetime.utcnow().date().isoformat())
+    sender_master_rtn = transfer_dict.get("sender_master_account_rtn")
+    receiver_master_rtn = transfer_dict.get("receiver_master_account_rtn")
+    amount_cents = transfer_dict.get("amount_cents")
+    rail_type = transfer_dict.get("rail_type")
+    external_ref_id = transfer_dict.get("external_ref_id")
+    effective_date = transfer_dict.get("effective_date", datetime.utcnow().date().isoformat())
 
     try:
-        amount_value = float(amount)
+        amount_value = float(amount_cents)
     except (TypeError, ValueError):
-        raise HTTPException(status_code=400, detail="amount must be numeric")
+        raise HTTPException(status_code=400, detail="amount_cents must be numeric")
 
     if amount_value <= 0:
-        raise HTTPException(status_code=400, detail="amount must be greater than 0")
+        raise HTTPException(status_code=400, detail="amount_cents must be greater than 0")
 
     try:
         conn = psycopg2.connect(db_url)

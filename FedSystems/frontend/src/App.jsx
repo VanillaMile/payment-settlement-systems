@@ -97,21 +97,21 @@ function HomePage({
     }
 
     const payload = {
-      primary_routing_transit_number: Number(addBankForm.primary_routing_transit_number),
+      primary_routing_transit_number: addBankForm.primary_routing_transit_number.trim(),
       legal_name: addBankForm.legal_name.trim(),
       federal_employer_identification_number: Number(addBankForm.federal_employer_identification_number),
-      master_account_rtn: Number(addBankForm.master_account_rtn),
+      master_account_rtn: addBankForm.master_account_rtn.trim(),
       net_debit_cap: Number(addBankForm.net_debit_cap),
       sftp_username: addBankForm.sftp_username,
     }
 
     if (
-      Number.isNaN(payload.primary_routing_transit_number) ||
+      !/^\d{9}$/.test(payload.primary_routing_transit_number) ||
+      !/^\d{9}$/.test(payload.master_account_rtn) ||
       Number.isNaN(payload.federal_employer_identification_number) ||
-      Number.isNaN(payload.master_account_rtn) ||
       Number.isNaN(payload.net_debit_cap)
     ) {
-      setAddBankError('Enter valid numeric values for the routing and balance fields.')
+      setAddBankError('Enter valid 9-digit routing numbers and numeric values for the balance fields.')
       return
     }
 
@@ -351,9 +351,10 @@ function HomePage({
                         <input
                           id="add-bank-primary-rtn"
                           className="form-control"
-                          type="number"
-                          min="0"
-                          step="1"
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          maxLength="9"
                           value={addBankForm.primary_routing_transit_number}
                           onChange={(event) => updateAddBankForm('primary_routing_transit_number', event.target.value)}
                           disabled={addBankSubmitting}
@@ -400,9 +401,10 @@ function HomePage({
                         <input
                           id="add-bank-master-rtn"
                           className="form-control"
-                          type="number"
-                          min="0"
-                          step="1"
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          maxLength="9"
                           value={addBankForm.master_account_rtn}
                           onChange={(event) => updateAddBankForm('master_account_rtn', event.target.value)}
                           disabled={addBankSubmitting}
