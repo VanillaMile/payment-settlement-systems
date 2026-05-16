@@ -25,6 +25,9 @@ services:
       - "${APP_ACH_PORT}:8000"
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:${POSTGRES_PORT}/${POSTGRES_DB}
+      - SFTP_HOST_PORT=${SFTP_ACH_HOST_PORT}
+      - REACT_PORT=${REACT_PORT}
+      - VITE_PORT=${VITE_PORT}
     depends_on:
       - postgres
     volumes:

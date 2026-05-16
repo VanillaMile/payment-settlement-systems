@@ -11,21 +11,43 @@ import base64
 from datetime import datetime
 import psycopg2
 import psycopg2.extras
+from dotenv import load_dotenv
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+# Load .env if present
+load_dotenv()
 ach = FastAPI()
+
+# Simplified CORS origins using ports passed via env (REACT_PORT, VITE_PORT)
+ports = []
+for key in ("REACT_PORT", "VITE_PORT"):
+    v = os.environ.get(key)
+    if v and v.strip():
+        ports.append(v.strip().strip('"').strip("'"))
+if not ports:
+    ports = ["3000", "5173"]
+
+hosts = ["localhost", "127.0.0.1"]
+server_ip = os.environ.get("SERVER_IP")
+if server_ip and server_ip.strip() and server_ip.strip() not in hosts:
+    hosts.append(server_ip.strip())
+
+allow_origins = [f"http://{h}:{p}" for h in hosts for p in ports]
+logger.debug("CORS allow_origins: %s", allow_origins)
+
+# Allow localhost/127.0.0.1 on any port by default (covers dev servers like port 3514).
+# Can be overridden with ALLOW_ORIGIN_REGEX in the environment.
+default_allow_origin_regex = r"^http://(localhost|127\.0\.0\.1)(:\d+)?$"
+allow_origin_regex = os.environ.get("ALLOW_ORIGIN_REGEX", default_allow_origin_regex)
+logger.debug("CORS allow_origin_regex: %s", allow_origin_regex)
 
 ach.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=allow_origins,
+    allow_origin_regex=allow_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -37,7 +59,8 @@ async def root():
 
 @ach.get("/health")
 async def health():
-    return {"status": "ok"}
+    return {"status": "ok",
+            "cors_allowed_origins": allow_origins} # TODO: Remove later
 
 @ach.get("/env")
 async def env():
