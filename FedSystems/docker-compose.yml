@@ -1,0 +1,71 @@
+version: '3.8'
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ach-backend:
+    image: fedsystems-ach
+    build:
+      context: ./ACH
+    ports:
+      - "${APP_ACH_PORT}:8000"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - SFTP_HOST_PORT=${SFTP_ACH_HOST_PORT}
+      - REACT_PORT=${REACT_PORT}
+      - VITE_PORT=${VITE_PORT}
+      - FRB_ROUTING_NUMBER=${FRB_ROUTING_NUMBER}
+      - FRB_LEGAL_NAME=${FRB_LEGAL_NAME}
+    depends_on:
+      - postgres
+    volumes:
+      - sftp_data:/app/sftp_data
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  sftp:
+    container_name: fedsystems-sftp
+    image: atmoz/sftp
+    ports:
+      - "${SFTP_ACH_HOST_PORT}:22"
+    volumes:
+    # Add new bank volumes here: ./SFTP_Keys/<name>/id_rsa.pub:/home/<username>/.ssh/keys/id_rsa.pub:ro
+      - sftp_data:/home
+      - ./SFTP_Keys/${BANK0}/id_rsa.pub:/home/${BANK0}/.ssh/keys/id_rsa.pub:ro
+      - ./SFTP_Keys/${BANK1}/id_rsa.pub:/home/${BANK1}/.ssh/keys/id_rsa.pub:ro
+      - ./SFTP_Keys/${BANK2}/id_rsa.pub:/home/${BANK2}/.ssh/keys/id_rsa.pub:ro
+      - ./SFTP_Keys/${BANK3}/id_rsa.pub:/home/${BANK3}/.ssh/keys/id_rsa.pub:ro
+      - ./sftp_set_perms.sh:/etc/sftp.d/set_perms.sh:ro
+    environment:
+    # Add new banks here: <username>::<uid>:<gid>:inbound,outbound
+      - SFTP_USERS=${BANK0}::1000:1000:inbound,outbound ${BANK1}::1001:1001:inbound,outbound ${BANK2}::1002:1002:inbound,outbound ${BANK3}::1003:1003:inbound,outbound
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "${REACT_PORT}:5173"
+    environment:
+      - VITE_ACH_API_BASE_URL=http://localhost:${APP_ACH_PORT}
+    depends_on:
+      - ach-backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+volumes:
+  postgres_data:
+  sftp_data:
