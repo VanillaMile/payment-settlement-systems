@@ -44,7 +44,6 @@ services:
       - "${APP_FEDNOW_PORT}:8000"
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      - SFTP_HOST_PORT=${SFTP_FEDNOW_HOST_PORT}
       - REACT_PORT=${REACT_PORT}
       - VITE_PORT=${VITE_PORT}
       - FRB_ROUTING_NUMBER=${FRB_ROUTING_NUMBER}
