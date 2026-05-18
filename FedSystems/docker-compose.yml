@@ -36,6 +36,24 @@ services:
       - sftp_data:/app/sftp_data
       - /var/run/docker.sock:/var/run/docker.sock
 
+  fednow-backend:
+    image: fedsystems-fednow
+    build:
+      context: ./FedNow
+    ports:
+      - "${APP_FEDNOW_PORT}:8000"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - SFTP_HOST_PORT=${SFTP_FEDNOW_HOST_PORT}
+      - REACT_PORT=${REACT_PORT}
+      - VITE_PORT=${VITE_PORT}
+      - FRB_ROUTING_NUMBER=${FRB_ROUTING_NUMBER}
+      - FRB_LEGAL_NAME=${FRB_LEGAL_NAME}
+    depends_on:
+      - postgres
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
   sftp:
     container_name: fedsystems-sftp
     image: atmoz/sftp
