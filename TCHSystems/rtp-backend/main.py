@@ -19,9 +19,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 app.include_router(router)
 
 @app.get("/", tags=["Health"])
 def read_root():
-    return {"message": "System RTP działa"}
+    return {"message": "RTP system works"}
