@@ -4,5 +4,6 @@ paramiko==3.4.0
 pydantic==2.4.2
 psycopg2-binary==2.9.10
 python-dotenv==1.0.0
+datetime==6.0
+httpx==0.24.1
 python-multipart==0.0.6
-sqlalchemy==2.0.20

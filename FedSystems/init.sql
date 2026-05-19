@@ -29,3 +29,9 @@ CREATE TABLE ach_participants (
   type VARCHAR(255),
   restricted INT
 );
+
+CREATE TABLE fednow_participants (
+  primary_routing_transit_number VARCHAR(9) PRIMARY KEY REFERENCES bank_details(primary_routing_transit_number),
+  type VARCHAR(255),
+  restricted INT
+);
