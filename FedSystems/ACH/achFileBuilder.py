@@ -11,6 +11,7 @@
 # 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999
 
 import os
+from datetime import datetime
 
 class ACHEntry:
     def __init__(self):
@@ -73,6 +74,7 @@ class ACHEntry:
         self.discretionary_data = record['discretionary_data']
         self.addenda_record_indicator = record['addenda_record_indicator']
         self.trace_number = record['trace_number']
+        return self
     
     def add_record(self, record_type_code, transaction_code, receiving_dfi_identification, check_digit, dfi_account_number, amount_cents, individual_id_number, individual_name, discretionary_data, addenda_record_indicator, trace_number):
         self.record_type_code = record_type_code
@@ -86,6 +88,7 @@ class ACHEntry:
         self.discretionary_data = discretionary_data
         self.addenda_record_indicator = addenda_record_indicator
         self.trace_number = trace_number
+        return self
 
 class ACHAddenda:
     def __init__(self):
@@ -119,6 +122,7 @@ class ACHAddenda:
         self.payment_related_information = record['payment_related_information']
         self.addenda_sequence_number = record['addenda_sequence_number']
         self.entry_detail_sequence_number = record['entry_detail_sequence_number']
+        return self
 
     def add_record(self, record_type_code, addenda_type_code, payment_related_information, addenda_sequence_number, entry_detail_sequence_number):
         self.record_type_code = record_type_code
@@ -126,6 +130,7 @@ class ACHAddenda:
         self.payment_related_information = payment_related_information
         self.addenda_sequence_number = addenda_sequence_number
         self.entry_detail_sequence_number = entry_detail_sequence_number
+        return self
 
 class ACHBatch:
     def __init__(self):
@@ -154,7 +159,9 @@ class ACHBatch:
             'total_credit_amount_cents': None,
             'company_identification': None,
             'message_authentication_code': None,
-            'reserved': None
+            'reserved': None,
+            'originating_dfi_identification': None,
+            'batch_number': None
         }
 
     def parse_header(self, header_line):
@@ -228,12 +235,14 @@ class ACHBatch:
             'total_credit_amount_cents': None,
             'company_identification': None,
             'message_authentication_code': None,
-            'reserved': None
+            'reserved': None,
+            'originating_dfi_identification': None,
+            'batch_number': None
         }
         """
         self.control = control
 
-    def add_control(self, record_type_code, service_class_code, entry_count, entry_hash, total_debit_amount_cents, total_credit_amount_cents, company_identification, message_authentication_code, reserved):
+    def add_control(self, record_type_code, service_class_code, entry_count, entry_hash, total_debit_amount_cents, total_credit_amount_cents, company_identification, message_authentication_code, reserved, originating_dfi_identification, batch_number):
         self.control = {
             'record_type_code': record_type_code,
             'service_class_code': service_class_code,
@@ -243,7 +252,9 @@ class ACHBatch:
             'total_credit_amount_cents': total_credit_amount_cents,
             'company_identification': company_identification,
             'message_authentication_code': message_authentication_code,
-            'reserved': reserved
+            'reserved': reserved,
+            'originating_dfi_identification': originating_dfi_identification,
+            'batch_number': batch_number
         }
 
     def parse_control(self, control_line):
@@ -256,7 +267,9 @@ class ACHBatch:
             'total_credit_amount_cents': int(control_line[32:44]), # Amount in cents, convert to dollars by dividing by 100
             'company_identification': control_line[44:54].strip(),
             'message_authentication_code': control_line[54:73].strip(), # Note: This field is optional and can be used by the ODFI for any purpose they choose. It may contain information that is relevant to the processing of the batch, but it is not standardized and may not be used by all ODFIs.
-            'reserved': control_line[73:94].strip()
+            'reserved': control_line[73:79].strip(),
+            'originating_dfi_identification': control_line[79:87].strip(),
+            'batch_number': control_line[87:94].strip()
         }
 
 
@@ -305,6 +318,70 @@ class ACHFile:
                     (digits[2] + digits[5] + digits[8]))
         
         return checksum % 10 == 0
+    
+    def _parse_lines(self, lines):
+        """Private: Reparse the file to apply self calculated control values"""
+        self.block_count = len(lines) // 10
+        try:
+            if not lines:
+                raise ValueError("ACH file is empty")
+            
+            # Checks if the file contains a whole number of 10-blocks (i.e. 10, 20, 30, etc. lines) and raises an error if not
+            self.is_file_of_10_blocks(lines)
+            
+            # Parse header
+            try: 
+                header_line = lines[0].rstrip('\n\r')
+                self.check_line_is_94_chars(header_line)
+                self.parse_header(header_line)
+            except Exception as e:
+                raise ValueError(f"Error parsing header: {e}")
+            
+            # Parse batches
+            current_batch = None
+            saw_file_control = False
+            for line in lines[1:]:
+                line = line.rstrip('\n\r')
+                self.check_line_is_94_chars(line)
+                record_type_code = line[0]
+
+                if saw_file_control:
+                    if line != '9' * 94:
+                        raise ValueError("Found non-padding content after file control record")
+                    continue
+
+                if record_type_code == '5': # Batch header
+                    if current_batch is not None:
+                        raise ValueError("Found batch header while already processing a batch")
+                    current_batch = ACHBatch().parse_header(line)
+                elif record_type_code == '6': # Entry detail
+                    if current_batch is None:
+                        raise ValueError("Found entry detail without a batch header")
+                    current_batch.add_entry(ACHEntry().parse_record(line))
+                elif record_type_code == '7': # Addenda record
+                    if current_batch is None:
+                        raise ValueError("Found addenda record without a batch header")
+                    if not current_batch.entries:
+                        raise ValueError("Found addenda record without an entry detail")
+                    current_batch.entries[-1].addenda.append(ACHAddenda().parse_record(line))
+                elif record_type_code == '8': # Batch control
+                    if current_batch is None:
+                        raise ValueError("Found batch control without a batch header")
+                    current_batch.parse_control(line)
+                    self.add_batch(current_batch)
+                    current_batch = None
+                elif record_type_code == '9': # File control
+                    if current_batch is not None:
+                        raise ValueError("Found file control while still processing a batch")
+                    if self.control is None:
+                        self.parse_control(line)
+                        saw_file_control = True
+                    elif line != '9' * 94:
+                        raise ValueError("Expected all-9 padding after file control record")
+                else:
+                    raise ValueError(f"Unknown record type code: {record_type_code}")
+        except Exception as e:
+            raise
 
     def parse(self, file_path, check_formatting=False):
         """Parses an ACH file from the given file path."""
@@ -444,8 +521,161 @@ class ACHFile:
     
     def get_block_number(self):
         return self.block_count
+
+    def build_ach(self, self_calculate_control=True):
+        """Builds the ACH file content as a list of lines, where each line is a 94-character string.
+        If self_calculate_control is True, the control record will be calculated based on the batches and entries in the file. If False, the control record will be built based on the current value of self.control, which can be manually set when creating the file.
+        if True, the content might get overwritten.
+        
+        example of return value:
+        [
+            "101 090000515 0401040182604050900A094101FRB Tungsten           Baguette Bank                  ",
+            "5220Baguette store                      1313131310PPDLEEK PAY        260406   1040104010000001",
+            "62201010101239               0000015075               Leek store              1040104010000001",
+            "705A 31 tons of leek purchase!                                                     00010000001",
+            "62231031031239               0000015075               Leek store              0040104010000002",
+            "822000000300320411320000000000000000000301501313131310                         040104010000001",
+            "9000001000001000000030032041132000000000000000000030150                                       ",
+        ]
+        """
+        def build_header_line():
+            """Something like this 94-character line empty space filled with spaces:
+            101 090000515 0401040182604050900A094101FRB Tungsten           Baguette Bank                  
+            """
+            file_id_modifier = self.header.get('file_id_modifier') or 'A'
+            return f"1{self.header['priority_code']}{self.header['immediate_destination']:>10}{self.header['immediate_origin']:>10}{self.header['file_creation_date']}{self.header['file_creation_time']}{file_id_modifier}{self.header['record_size']}{self.header['blocking_factor']}{self.header['format_code']}{self.header['immediate_destination_name']:<23}{self.header['immediate_origin_name']:<23}{self.header['reference_code']:<8}"
+        
+        def build_file_control_line():
+            """Something like this 94-character line empty space filled with spaces:
+            9000001000001000000030032041132000000000000000000030150                                       
+            """
+            if self_calculate_control:
+                batch_count = len(self.batches)
+                block_count = (len(self.batches) * 2 + sum(len(batch.entries) + len(batch.entries) * len(entry.addenda) for batch in self.batches)) // 10 + 1 # Each batch has a header and control line, each entry has an entry line and potentially addenda lines. We divide by 10 to get the number of blocks, and add 1 for the file control line.
+                entry_count = sum(1 + len(entry.addenda) for batch in self.batches for entry in batch.entries)
+                entry_hash = sum(int(entry.receiving_dfi_identification) for batch in self.batches for entry in batch.entries) % 10**10
+                total_debit_amount_cents = sum(entry.amount_cents for batch in self.batches for entry in batch.entries if entry.transaction_code in ['27', '37', '26', '36']) # Debit transaction codes (27 and 37 are for prearranged payments and reversals, 26 and 36 are for return entries)
+                total_credit_amount_cents = sum(entry.amount_cents for batch in self.batches for entry in batch.entries if entry.transaction_code in ['22', '32', '21', '31']) # Credit transaction codes (22 and 32 are for prearranged payments and reversals, 21 and 31 are for return entries)
+                reserved = ''
+                file_control_line = (
+                    f"9{batch_count:06}{block_count:06}{entry_count:08}{entry_hash:010}{total_debit_amount_cents:012}{total_credit_amount_cents:012}{reserved:<39}"
+                )
+                return file_control_line
+            else:
+                file_control_line = (
+                    f"9{self.control['batch_count']:06}{self.control['block_count']:06}{self.control['entry_count']:08}{self.control['entry_hash']:010}{self.control['total_debit_amount_cents']:012}{self.control['total_credit_amount_cents']:012}{self.control['reserved']:<39}"
+                )
+                return file_control_line
+            
+        def build_batch(batch):
+            def build_batch_header_line():
+                """Something like this 94-character line empty space filled with spaces:
+                5220Baguette store                      1313131310PPDLEEK PAY        260406   1040104010000001
+                """
+                return f"5{batch.header['service_class_code']}{batch.header['company_name']:<16}{batch.header['company_discretionary_data']:<20}{batch.header['company_identification']:<10}{batch.header['standard_entry_class_code']:<3}{batch.header['company_entry_description']:<10}{batch.header['company_descriptive_date']:<6}{batch.header['effective_entry_date']:<6}{batch.header['settlement_date']:<3}{batch.header['originator_status_code']:<1}{batch.header['originating_dfi_identification']:<8}{batch.header['batch_number']:<7}"
+
+            def build_entry_line(entry):
+                """Something like this 94-character line empty space filled with spaces:
+                62201010101239               0000015075               Leek store              1040104010000001
+                """
+                return f"6{entry.transaction_code}{entry.receiving_dfi_identification:>8}{entry.check_digit}{entry.dfi_account_number:<17}{entry.amount_cents:>010}{entry.individual_id_number:<15}{entry.individual_name:<22}{entry.discretionary_data:<2}{entry.addenda_record_indicator:<1}{entry.trace_number:<15}"
+            
+            def build_addenda_line(addenda):
+                """Something like this 94-character line empty space filled with spaces:
+                705A 31 tons of leek purchase!                                                     00010000001
+                """
+                return f"7{addenda.addenda_type_code}{addenda.payment_related_information:<80}{addenda.addenda_sequence_number:<4}{addenda.entry_detail_sequence_number:<7}"
+            
+            def build_batch_control_line():
+                    """Something like this 94-character line empty space filled with spaces:
+                    822000000300320411320000000000000000000301501313131310                         040104010000001
+                    """
+                
+            batch_lines = [build_batch_header_line()]
+            for entry in batch.entries:
+                batch_lines.append(build_entry_line(entry))
+                for addenda in entry.addenda:
+                    batch_lines.append(build_addenda_line(addenda))
+            if self_calculate_control:
+                # Calculate control values based on batch content
+                entry_count = sum(1 + len(entry.addenda) for entry in batch.entries)
+                entry_hash = sum(int(entry.receiving_dfi_identification) for entry in batch.entries) % 10**10
+                total_debit_amount_cents = sum(entry.amount_cents for entry in batch.entries if entry.transaction_code in ['26', '27', '36', '37']) # Debit transaction codes
+                total_credit_amount_cents = sum(entry.amount_cents for entry in batch.entries if entry.transaction_code in ['21', '22', '31', '32']) # Credit transaction codes
+                batch_control_line = (
+                    f"8{batch.header['service_class_code']}"
+                    f"{entry_count:06}"
+                    f"{entry_hash:010}"
+                    f"{total_debit_amount_cents:012}"
+                    f"{total_credit_amount_cents:012}"
+                    f"{batch.header['company_identification']:<10}"
+                    f"{'':<19}"
+                    f"{'':<6}"
+                    f"{batch.header['originating_dfi_identification']:0>8}"
+                    f"{batch.header['batch_number']:0>7}"
+                )
+            else:
+                batch_control_line = (
+                    f"8{batch.control['service_class_code']}"
+                    f"{batch.control['entry_count']:06}"
+                    f"{int(batch.control['entry_hash']) % 10**10:010}"
+                    f"{int(batch.control['total_debit_amount_cents']):012}"
+                    f"{int(batch.control['total_credit_amount_cents']):012}"
+                    f"{batch.control['company_identification']:<10}"
+                    f"{batch.control['message_authentication_code']:<19}"
+                    f"{batch.control['reserved']:<6}"
+                    f"{batch.control['originating_dfi_identification']:0>8}"
+                    f"{batch.control['batch_number']:0>7}"
+                )
+            batch_lines.append(batch_control_line)
+            return batch_lines
+        
+        ach_file_lines = [build_header_line()]
+
+        for batch in self.batches:
+            ach_file_lines.extend(build_batch(batch))  
+
+        ach_file_lines.append(build_file_control_line())
+
+        #Check if the file contains a whole number of 10-blocks (i.e. 10, 20, 30, etc. lines) and raises an error if not
+        no_of_lines = len(ach_file_lines)
+
+        if no_of_lines % 10 != 0:
+            # If not, we add padding lines of 9s until it does
+            padding_lines_needed = (10 - (no_of_lines % 10)) % 10
+            ach_file_lines.extend(['9' * 94] * padding_lines_needed)
+
+        if self_calculate_control:
+            # Clear current values
+            self.header = {
+                'record_type_code': None,
+                'priority_code': None,
+                'immediate_destination': None,
+                'immediate_origin': None,
+                'file_creation_date': None,
+                'file_creation_time': None,
+                'file_id_modifier': None,
+                'record_size': None,
+                'blocking_factor': None,
+                'format_code': None,
+                'immediate_destination_name': None,
+                'immediate_origin_name': None,
+                'reference_code': None
+            }
+            self.control = None
+            self.batches = []
+
+            self._parse_lines(ach_file_lines) # Re-parse to apply self calculated control values and ensure everything is correct
+
+        return ach_file_lines
     
     def validate(self, is_parsed=False, immediate_destination=None, immediate_origin=None):
+        """
+        Validates the ACH file and returns an ACK string.
+        - is_parsed: If true, this will validate if the file is made of 10-line blocks, requires the file to be parsed from .ach file.
+        - immediate_destination: If provided, this will validate that the immediate destination in the header matches the expected value.
+        - immediate_origin: If provided, this will validate that the immediate origin in the header matches the expected value.
+        """
         line_errors= []
         
         def build_header_line():
@@ -651,20 +881,20 @@ class ACHFile:
                     'message': f"Entry hash in file control does not match calculated entry hash: {control['entry_hash']} != {str(entry_hash).zfill(10)}"
                 })
 
-            if control['total_debit_amount_cents'] != sum(entry.amount_cents for batch in self.batches for entry in batch.entries if entry.transaction_code in ['27', '37', '47', '57', '67', '87']):
+            if control['total_debit_amount_cents'] != sum(entry.amount_cents for batch in self.batches for entry in batch.entries if entry.transaction_code in ['26', '27', '36', '37', '47', '57', '67', '87']):
                 line_errors.append({
                     'error_type': 'C',
                     'line_number': line_count,
                     'error_code': 3006,
-                    'message': f"Total debit amount in file control does not match calculated total debit amount: {control['total_debit_amount_cents']} != {sum(entry.amount_cents for batch in self.batches for entry in batch.entries if entry.transaction_code in ['27', '37', '47', '57', '67', '87'])}"
+                    'message': f"Total debit amount in file control does not match calculated total debit amount: {control['total_debit_amount_cents']} != {sum(entry.amount_cents for batch in self.batches for entry in batch.entries if entry.transaction_code in ['26', '27', '36', '37', '47', '57', '67', '87'])}"
                 })
 
-            if control['total_credit_amount_cents'] != sum(entry.amount_cents for batch in self.batches for entry in batch.entries if entry.transaction_code in ['22', '32', '42', '52', '62', '82']):
+            if control['total_credit_amount_cents'] != sum(entry.amount_cents for batch in self.batches for entry in batch.entries if entry.transaction_code in ['21', '22', '31', '32', '42', '52', '62', '82']):
                 line_errors.append({
                     'error_type': 'C',
                     'line_number': line_count,
                     'error_code': 3007,
-                    'message': f"Total credit amount in file control does not match calculated total credit amount: {control['total_credit_amount_cents']} != {sum(entry.amount_cents for batch in self.batches for entry in batch.entries if entry.transaction_code in ['22', '32', '42', '52', '62', '82'])}"
+                    'message': f"Total credit amount in file control does not match calculated total credit amount: {control['total_credit_amount_cents']} != {sum(entry.amount_cents for batch in self.batches for entry in batch.entries if entry.transaction_code in ['21', '22', '31', '32', '42', '52', '62', '82'])}"
                 })
 
             if control['reserved'] != '':
@@ -723,7 +953,7 @@ class ACHFile:
                 previous_entry_trace_number = int(batch.header['originating_dfi_identification'] + '0000000')
                 for entry in batch.entries:
                     if batch.header['service_class_code'] == '225':
-                        if entry.transaction_code not in ['27', '28', '37', '38', '47', '48', '57', '58', '67', '68', '87', '88']:
+                        if entry.transaction_code not in ['26', '27', '28', '36', '37', '38', '47', '48', '57', '58', '67', '68', '87', '88']:
                             line_errors.append({
                                 'error_type': 'E',
                                 'line_number': line_number,
@@ -732,7 +962,7 @@ class ACHFile:
                             })
 
                     if batch.header['service_class_code'] == '220':
-                        if entry.transaction_code not in ['22', '23', '32', '33', '42', '43', '52', '53', '62', '63', '82', '83']:
+                        if entry.transaction_code not in ['21','22', '23', '31', '32', '33', '42', '43', '52', '53', '62', '63', '82', '83']:
                             line_errors.append({
                                 'error_type': 'E',
                                 'line_number': line_number,
@@ -771,7 +1001,7 @@ class ACHFile:
                         'message': f"Entry hash in batch control does not match calculated entry hash: {batch.control['entry_hash']} != {str(entry_hash).zfill(10)}"
                     })
 
-                total_debit_amount_cents = sum(entry.amount_cents for entry in batch.entries if entry.transaction_code in ['27', '37', '47', '57', '67', '87'])
+                total_debit_amount_cents = sum(entry.amount_cents for entry in batch.entries if entry.transaction_code in ['26', '27', '36', '37', '47', '57', '67', '87'])
                 if batch.control['total_debit_amount_cents'] != total_debit_amount_cents:
                     line_errors.append({
                         'error_type': 'B',
@@ -780,7 +1010,7 @@ class ACHFile:
                         'message': f"Total debit amount in batch control does not match calculated total debit amount: {batch.control['total_debit_amount_cents']} != {total_debit_amount_cents}"
                     })
 
-                total_credit_amount_cents = sum(entry.amount_cents for entry in batch.entries if entry.transaction_code in ['22', '32', '42', '52', '62', '82'])
+                total_credit_amount_cents = sum(entry.amount_cents for entry in batch.entries if entry.transaction_code in ['21', '22', '31', '32', '42', '52', '62', '82'])
                 if batch.control['total_credit_amount_cents'] != total_credit_amount_cents:
                     line_errors.append({
                         'error_type': 'B',
@@ -845,3 +1075,111 @@ if __name__ == "__main__":
     print("Control:", ach_file.get_control())
 
     print(ach_file.validate(is_parsed=True))
+
+    print("\n\nACH File build result (parsed from file):")
+    print(ach_file.build_ach())
+
+    # new file creation example
+    new_ach_file = ACHFile()
+    new_ach_file.header = {
+        'record_type_code': '1',
+        'priority_code': '01',
+        'immediate_destination': '090000515',
+        'immediate_origin': '040104018',
+        'file_creation_date': datetime.now().strftime('%y%m%d'),
+        'file_creation_time': datetime.now().strftime('%H%M'),
+        'file_id_modifier': 'A',
+        'record_size': '094',
+        'blocking_factor': '10',
+        'format_code': '1',
+        'immediate_destination_name': 'FRB Tungsten',
+        'immediate_origin_name': 'Baguette store',
+        'reference_code': ''
+    }
+
+    batch = ACHBatch()
+    batch.header = {
+        'record_type_code': '5',
+        'service_class_code': '200',
+        'company_name': 'Baguette store',
+        'company_discretionary_data': '',
+        'company_identification': '1313131310',
+        'standard_entry_class_code': 'PPD',
+        'company_entry_description': 'LEEK PAY',
+        'company_descriptive_date': datetime.now().strftime('%y%m%d'),
+        'effective_entry_date': (datetime.now()).strftime('%y%m%d'),
+        'settlement_date': '',
+        'originator_status_code': '1',
+        'originating_dfi_identification': new_ach_file.header['immediate_origin'][:8],
+        'batch_number': '0000001'
+    }
+    
+    entry1 = ACHEntry().add_record(
+        record_type_code='6',
+        transaction_code='22',
+        receiving_dfi_identification='01010101',
+        check_digit='2',
+        dfi_account_number='123456789',
+        amount_cents=100,
+        individual_id_number='',
+        individual_name='Leek store',
+        discretionary_data='',
+        addenda_record_indicator='0',
+        trace_number='040104010000001'
+    )
+    entry2 = ACHEntry().add_record(
+        record_type_code='6',
+        transaction_code='27',
+        receiving_dfi_identification='01010101',
+        check_digit='2',
+        dfi_account_number='123456789',
+        amount_cents=99900,
+        individual_id_number='',
+        individual_name='Leek store',
+        discretionary_data='',
+        addenda_record_indicator='0',
+        trace_number='040104010000002'
+    )
+    
+    batch.add_entry(entry1)
+    batch.add_entry(entry2)
+
+    batch.control = {
+        'record_type_code': '8',
+        'service_class_code': batch.header['service_class_code'],
+        'entry_count': '',
+        'entry_hash': '',
+        'total_debit_amount_cents': '',
+        'total_credit_amount_cents': '',
+        'company_identification': batch.header['company_identification'],
+        'message_authentication_code': '',
+        'reserved': '',
+        'originating_dfi_identification': batch.header['originating_dfi_identification'],
+        'batch_number': batch.header['batch_number']
+    }
+
+    new_ach_file.control = {
+        'record_type_code': '9',
+        'batch_count': '',
+        'block_count': '',
+        'entry_count': '',
+        'entry_hash': '',
+        'total_debit_amount_cents': '',
+        'total_credit_amount_cents': '',
+        'reserved': ''
+    }
+
+    new_ach_file.add_batch(batch)
+
+    print("\n\nACH File build result (built):")
+    print(new_ach_file.build_ach())
+
+    for line in ach_file.build_ach():
+        print(line)
+
+    print(ach_file.batches[0].control['entry_count'])
+
+    for line in new_ach_file.build_ach():
+        print(line)
+
+    print(new_ach_file.validate(is_parsed=False))
