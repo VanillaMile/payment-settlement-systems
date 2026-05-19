@@ -515,22 +515,6 @@ x-api-key
 
 ---
 
-# Bank application responsibilities
-
-Each bank integrating with the RTP system should implement:
-
-- API communication with RTP server,
-- API key authentication,
-- ISO 20022 XML generation,
-- XML request sending,
-- RTP response handling,
-- transaction status updates,
-- duplicate transaction prevention,
-- liquidity monitoring,
-- retry logic for queued transactions.
-
----
-
 # Gridlock mechanism
 
 If a bank does not have enough liquidity:
