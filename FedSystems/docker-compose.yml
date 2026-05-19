@@ -52,6 +52,7 @@ services:
       - postgres
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./SFTP_Keys:/FedNow/SFTP_Keys:ro
 
   sftp:
     container_name: fedsystems-sftp
