@@ -102,6 +102,25 @@ def main():
     for key in sorted(banks.keys()):
         bank_name = banks[key]
         create_key(bank_name, str(keys_dir))
+
+    # Generate key for FRB
+    frb_dir = keys_dir / 'frb'
+    frb_dir.mkdir(exist_ok=True)
+    frb_key_file = frb_dir / 'id_rsa'
+    if not frb_key_file.exists():
+        print("Generating 4096-bit RSA keypair for FRB...")
+        result = subprocess.run([
+            'ssh-keygen',
+            '-t', 'rsa',
+            '-b', '4096',
+            '-f', str(frb_key_file),
+            '-N', ''
+        ], capture_output=True)
+        
+        if result.returncode != 0:
+            print("Failed to generate key for FRB.")
+        else:
+            print(f"Created {frb_key_file} and {frb_key_file}.pub")
     
     print("Done.")
 
