@@ -1,4 +1,18 @@
 version: '3.8'
+
+x-message-queue-base: &message-queue-base
+  image: fedsystems-mq
+  build:
+    context: ./MQ
+  environment:
+    - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    - FRB_ROUTING_NUMBER=${FRB_ROUTING_NUMBER}
+    - FRB_LEGAL_NAME=${FRB_LEGAL_NAME}
+  depends_on:
+    - postgres
+  volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+
 services:
   postgres:
     image: postgres:15
@@ -48,6 +62,14 @@ services:
       - VITE_PORT=${VITE_PORT}
       - FRB_ROUTING_NUMBER=${FRB_ROUTING_NUMBER}
       - FRB_LEGAL_NAME=${FRB_LEGAL_NAME}
+      - MQ_BANK0_RTN=${BANK0_RTN}
+      - MQ_BANK1_RTN=${BANK1_RTN}
+      - MQ_BANK2_RTN=${BANK2_RTN}
+      - MQ_BANK3_RTN=${BANK3_RTN}
+      - MQ_BANK0_URL=http://message-queue-bank0-client:8000
+      - MQ_BANK1_URL=http://message-queue-bank1-client:8000
+      - MQ_BANK2_URL=http://message-queue-bank2-client:8000
+      - MQ_BANK3_URL=http://message-queue-bank3-client:8000
     depends_on:
       - postgres
     volumes:
@@ -83,6 +105,54 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
+
+  message-queue-bank0-client:
+    <<: *message-queue-base
+    ports:
+      - "${MQ_BANK0_PORT}:8000"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - FEDNOW_API_BASE_URL=http://fednow-backend:8000
+      - FRB_ROUTING_NUMBER=${FRB_ROUTING_NUMBER}
+      - FRB_LEGAL_NAME=${FRB_LEGAL_NAME}
+      - MQ_BANK_NAME=${BANK0}
+      - MQ_BANK_RTN=${BANK0_RTN}
+
+  message-queue-bank1-client:
+    <<: *message-queue-base
+    ports:
+      - "${MQ_BANK1_PORT}:8000"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - FEDNOW_API_BASE_URL=http://fednow-backend:8000
+      - FRB_ROUTING_NUMBER=${FRB_ROUTING_NUMBER}
+      - FRB_LEGAL_NAME=${FRB_LEGAL_NAME}
+      - MQ_BANK_NAME=${BANK1}
+      - MQ_BANK_RTN=${BANK1_RTN}
+
+  message-queue-bank2-client:
+    <<: *message-queue-base
+    ports:
+      - "${MQ_BANK2_PORT}:8000"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - FEDNOW_API_BASE_URL=http://fednow-backend:8000
+      - FRB_ROUTING_NUMBER=${FRB_ROUTING_NUMBER}
+      - FRB_LEGAL_NAME=${FRB_LEGAL_NAME}
+      - MQ_BANK_NAME=${BANK2}
+      - MQ_BANK_RTN=${BANK2_RTN}
+
+  message-queue-bank3-client:
+    <<: *message-queue-base
+    ports:
+      - "${MQ_BANK3_PORT}:8000"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - FEDNOW_API_BASE_URL=http://fednow-backend:8000
+      - FRB_ROUTING_NUMBER=${FRB_ROUTING_NUMBER}
+      - FRB_LEGAL_NAME=${FRB_LEGAL_NAME}
+      - MQ_BANK_NAME=${BANK3}
+      - MQ_BANK_RTN=${BANK3_RTN}
 
 volumes:
   postgres_data:
