@@ -25,13 +25,28 @@ def extract_rtp_data(xml_string: str):
     # Nagłówek
     msg_id_node = root.find('.//{*}GrpHdr//{*}MsgId')
     
-    # informacje o transakcji
+    # Informacje o transakcji
     end_to_end_node = root.find('.//{*}PmtId//{*}EndToEndId')
     amount_node = root.find('.//{*}IntrBkSttlmAmt')
     
-    # Banki
-    sender_node = root.find('.//{*}DbtrAgt//{*}FinInstnId//{*}BICFI')
-    receiver_node = root.find('.//{*}CdtrAgt//{*}FinInstnId//{*}BICFI')
+    # Banki amerykańskie routing number w tagu Othr
+    sender_node = root.find('.//{*}DbtrAgt//{*}FinInstnId//{*}ClrSysMmbId//{*}MmbId')
+    receiver_node = root.find('.//{*}CdtrAgt//{*}FinInstnId//{*}ClrSysMmbId//{*}MmbId')
+
+    # Klienci detaliczni
+    debtor_name_node = root.find('.//{*}Dbtr//{*}Nm')
+    
+    # Szukamy lokalnych kont w tagu Othr
+    debtor_account_node = root.find('.//{*}DbtrAcct//{*}Id//{*}Othr//{*}Id')
+    if debtor_account_node is None:
+        debtor_account_node = root.find('.//{*}DbtrAcct//{*}Id')
+
+    creditor_name_node = root.find('.//{*}Cdtr//{*}Nm')
+    
+    #szukamy lokalnych kont w tagu Othr
+    creditor_account_node = root.find('.//{*}CdtrAcct//{*}Id//{*}Othr//{*}Id')
+    if creditor_account_node is None:
+        creditor_account_node = root.find('.//{*}CdtrAcct//{*}Id')
     
     if None in (amount_node, sender_node, receiver_node, msg_id_node, end_to_end_node):
         raise ValueError("Missing required ISO 20022 tags.")
@@ -45,7 +60,11 @@ def extract_rtp_data(xml_string: str):
         "amount": float(amount_node.text),
         "currency": currency,
         "sender_code": sender_node.text,
-        "receiver_code": receiver_node.text
+        "receiver_code": receiver_node.text,
+        "debtor_name": debtor_name_node.text if debtor_name_node is not None else None,
+        "debtor_account": debtor_account_node.text if debtor_account_node is not None else None,
+        "creditor_name": creditor_name_node.text if creditor_name_node is not None else None,
+        "creditor_account": creditor_account_node.text if creditor_account_node is not None else None
     }
 
 # --- ZABEZPIECZENIE TOŻSAMOŚCI ---
@@ -143,7 +162,9 @@ def get_transactions(db: Session = Depends(get_db)):
             "amount": t.amount, 
             "status": t.status,
             "message_id": t.message_id, 
-            "timestamp": t.timestamp.isoformat() + ("Z" if not t.timestamp.tzinfo else "") if t.timestamp else None
+            "timestamp": t.timestamp.isoformat() + ("Z" if not t.timestamp.tzinfo else "") if t.timestamp else None,
+            "debtor_name": getattr(t, "debtor_name", None),
+            "creditor_name": getattr(t, "creditor_name", None)
         } for t in txs
     ]
 
@@ -227,7 +248,17 @@ async def process_transfer(
         if current_bank.balance >= -current_bank.debt_limit:
             current_bank.limit_exceeded_at = None
             
-        new_tx = Transaction(sender_code=current_bank.bank_code, receiver_code=receiver.bank_code, amount=amount, status="STANDARD", message_id=e2e_id)
+        new_tx = Transaction(
+            sender_code=current_bank.bank_code, 
+            receiver_code=receiver.bank_code, 
+            amount=amount, 
+            status="STANDARD", 
+            message_id=e2e_id,
+            debtor_name=data.get("debtor_name"),
+            debtor_account=data.get("debtor_account"),
+            creditor_name=data.get("creditor_name"),
+            creditor_account=data.get("creditor_account")
+        )
         db.add(new_tx)
         db.commit()
         return {"status": "ACCEPTED", "message": "Settlement completed."}
@@ -299,7 +330,18 @@ def resolve_gridlock(db: Session = Depends(get_db)):
                 s_code = data["sender_code"]
                 r_code = data["receiver_code"]
                 e2e_id = data["end_to_end_id"]
-                db.add(Transaction(sender_code=s_code, receiver_code=r_code, amount=amount, status="RESOLVED", message_id=e2e_id))
+                
+                db.add(Transaction(
+                    sender_code=s_code, 
+                    receiver_code=r_code, 
+                    amount=amount, 
+                    status="RESOLVED", 
+                    message_id=e2e_id,
+                    debtor_name=data.get("debtor_name"),
+                    debtor_account=data.get("debtor_account"),
+                    creditor_name=data.get("creditor_name"),
+                    creditor_account=data.get("creditor_account")
+                ))
             except Exception:
                 pass
             db.delete(item)

@@ -28,6 +28,10 @@ class Transaction(Base):
     status = Column(String) 
     message_id = Column(String, unique=True, nullable=True, index=True)
     timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    debtor_name = Column(String, nullable=True)          
+    debtor_account = Column(String, nullable=True)               
+    creditor_name = Column(String, nullable=True)            
+    creditor_account = Column(String, nullable=True)            
 
 class GridlockQueue(Base):
     __tablename__ = "gridlock_queue"
