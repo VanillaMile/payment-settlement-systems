@@ -440,44 +440,6 @@ The system accepts simplified ISO 20022 XML payment messages.
 
 ---
 
-## Example payment message
-
-```xml
-<Document>
-    <FIToFICstmrCdtTrf>
-        <GrpHdr>
-            <MsgId>MSG-001</MsgId>
-        </GrpHdr>
-
-        <CdtTrfTxInf>
-
-            <PmtId>
-                <EndToEndId>E2E-001</EndToEndId>
-            </PmtId>
-
-            <IntrBkSttlmAmt Ccy="USD">
-                5000
-            </IntrBkSttlmAmt>
-
-            <DbtrAgt>
-                <FinInstnId>
-                    <BICFI>BANKA</BICFI>
-                </FinInstnId>
-            </DbtrAgt>
-
-            <CdtrAgt>
-                <FinInstnId>
-                    <BICFI>BANKB</BICFI>
-                </FinInstnId>
-            </CdtrAgt>
-
-        </CdtTrfTxInf>
-    </FIToFICstmrCdtTrf>
-</Document>
-```
-
----
-
 # RTP payment flow
 
 ## Standard transfer flow
@@ -711,38 +673,48 @@ curl -X POST "http://localhost:8000/transfer" \
 ## Example XML file
 
 ```xml
-<Document>
-    <FIToFICstmrCdtTrf>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.008.001.08">
+  <FIToFICstmrCdtTrf>
+    <GrpHdr>
+      <MsgId>MSG-TEST-002</MsgId>
+    </GrpHdr>
+    <CdtTrfTxInf>
+      <PmtId>
+         <EndToEndId>E2E-TEST-002</EndToEndId>
+      </PmtId>
+      
+      <IntrBkSttlmAmt Ccy="USD">500.00</IntrBkSttlmAmt>
+      
+      <DbtrAgt>
+         <FinInstnId>
+            <ClrSysMmbId><MmbId>BANKA</MmbId></ClrSysMmbId>
+         </FinInstnId>
+      </DbtrAgt>
+      <Dbtr>
+         <Nm>Jan Kowalski</Nm>
+      </Dbtr>
+      <DbtrAcct>
+         <Id>
+            <Othr><Id>1234567890</Id></Othr>
+         </Id>
+      </DbtrAcct>
 
-        <GrpHdr>
-            <MsgId>MSG-001</MsgId>
-        </GrpHdr>
+      <CdtrAgt>
+         <FinInstnId>
+            <ClrSysMmbId><MmbId>BANKB</MmbId></ClrSysMmbId>
+         </FinInstnId>
+      </CdtrAgt>
+      <Cdtr>
+         <Nm>Sklep Internetowy XYZ</Nm>
+      </Cdtr>
+      <CdtrAcct>
+         <Id>
+            <Othr><Id>0987654321</Id></Othr>
+         </Id>
+      </CdtrAcct>
 
-        <CdtTrfTxInf>
-
-            <PmtId>
-                <EndToEndId>E2E-001</EndToEndId>
-            </PmtId>
-
-            <IntrBkSttlmAmt Ccy="USD">
-                5000
-            </IntrBkSttlmAmt>
-
-            <DbtrAgt>
-                <FinInstnId>
-                    <BICFI>BANKA</BICFI>
-                </FinInstnId>
-            </DbtrAgt>
-
-            <CdtrAgt>
-                <FinInstnId>
-                    <BICFI>BANKB</BICFI>
-                </FinInstnId>
-            </CdtrAgt>
-
-        </CdtTrfTxInf>
-
-    </FIToFICstmrCdtTrf>
+    </CdtTrfTxInf>
+  </FIToFICstmrCdtTrf>
 </Document>
 ```
 
