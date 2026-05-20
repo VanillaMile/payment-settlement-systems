@@ -659,15 +659,6 @@ Injects liquidity into selected bank.
 
 # Example RTP transfer request
 
-## CURL example
-
-```bash
-curl -X POST "http://localhost:8000/transfer" \
--H "Content-Type: application/xml" \
--H "x-api-key: secret-key-bank-a" \
--d @payment.xml
-```
-
 ---
 
 ## Example XML file
@@ -818,6 +809,10 @@ The project implements simplified ISO 20022 error handling.
 | status | String |
 | message_id | String |
 | timestamp | DateTime |
+| debtor_name | String |
+| debtor_account | String |
+| creditor_name | String |
+| creditor_account | String | 
 
 ---
 
