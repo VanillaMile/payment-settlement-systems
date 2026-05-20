@@ -229,6 +229,72 @@ Postgres database at (localhost:5439):
 - Password: Password123
 - Database: fed_systems_db
 
+# FedNow
+
+## Table of contents
+
+## System flow chart overview
+
+```mermaid
+graph TD;
+    Bank0 -->|/send| Bank0-MQ-Client;
+    Bank0-MQ-Client --> FedNow-Service;
+    FedNow-Service --> Bank1-MQ-Client; 
+    Bank1 -->|/incoming| Bank1-MQ-Client;
+    Bank1 -->|/send| Bank1-MQ-Client;
+    Bank1-MQ-Client --> FedNow-Service;
+    FedNow-Service --> Banks-Master-Accounts
+    FedNow-Service --> Bank0-MQ-Client;
+    Bank0 -->|/incoming| Bank0-MQ-Client
+```
+
+To communicate with FedNow service use **dedicated client (for example Bank0-MQ-Client in chart above)** instead of direct connection.
+
+## How to access your dedicated client
+
+1. In `.env` select one bank as yours, you can change name, port and RTN(must be a valid RTN)
+2. Connect to your selected client with http://localhost:{MQ_BANK_PORT}
+    - Example for:
+    ```
+        BANK0 = "baguette-bank"
+        BANK1 = "leek-bank"
+        BANK2 = "bank-of-the-onion"
+        BANK3 = "croissant-bank"
+
+        BANK0_RTN = "040104018"
+        BANK1_RTN = "010101012"
+        BANK2_RTN = "910310314"
+        BANK3_RTN = "514310008"
+
+        MQ_BANK0_PORT = 8770
+        MQ_BANK1_PORT = 8771
+        MQ_BANK2_PORT = 8772
+        MQ_BANK3_PORT = 8773
+    ```
+    If you select your bank to be `BANK0` you'd have **RTN: 040104018** and your FedNow client would be accessible via http://localhost:8770
+
+    Encryption is handled internally between client and FedNow system.
+
+    You can find API documentation at http://localhost:8770/docs after starting docker FedSystems docker.
+    
+    Clients are built at start so pre-registration is required.
+
+## FedNow Api
+
+You should connect to your dedicated client (http://localhost:8770 in example above) not directly.
+
+Replace port 8770 with port for your selected bank.
+
+API also available at  http://localhost:8770/docs
+
+- http://localhost:8770/send - `POST`, accepts xml files. This is where you'd send any files you want to send to FedNow service.
+- http://localhost:8770/incoming - Lists incoming files
+- http://localhost:8770/incoming/{filename} - Downloads incoming file
+- http://localhost:8770/mark-failed/{filename} - Allows you to clear file from incoming to failed directory
+- http://localhost:8770/mark-collected/{filename} - Allows you to clear file from incoming to collected directory
+- http://localhost:8770/collected - Lists collected files (Used mainly for archiving)
+- http://localhost:8770/collected/{filename} - Allows you to download file from collected directory (Used mainly for archiving)
+
 # RTP System
 
 ## Table of contents

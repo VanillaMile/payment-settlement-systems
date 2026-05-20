@@ -75,8 +75,8 @@ def get_bank_info():
         "frb_routing_number": FRB_ROUTING_NUMBER
     }
 
-@message_queue.post("/send", tags=["Messages"])
-async def send_message(
+@message_queue.post("/send", tags=["Files"])
+async def send_file(
     file: UploadFile = File(...),
 ):
     """Send an uploaded XML file directly to FedNow."""
@@ -117,10 +117,10 @@ async def send_message(
         raise HTTPException(status_code=500, detail=str(exc))
     
 @message_queue.post("/receive", tags=["Internal"])
-def receive_message(
+def receive_file(
     file: UploadFile = File(...),
 ):
-    """Endpoint used by FedNow to deliver messages to the bank."""
+    """Endpoint used by FedNow to deliver files to the bank."""
     try:
         if not file.filename.lower().endswith('.xml'):
             raise HTTPException(status_code=400, detail="File must be XML (.xml)")
@@ -143,8 +143,8 @@ def receive_message(
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
-@message_queue.get("/failed", tags=["Messages"])
-def get_failed_messages():
+@message_queue.get("/failed", tags=["Files"])
+def get_failed_files():
     """List XML files in failed directory."""
     try:
         files = [f for f in os.listdir("failed") if f.endswith('.xml')]
@@ -152,8 +152,8 @@ def get_failed_messages():
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
-@message_queue.get("/incoming", tags=["Messages"])
-def get_incoming_messages():
+@message_queue.get("/incoming", tags=["Files"])
+def get_incoming_files():
     """List XML files in incoming directory."""
     try:
         files = [f for f in os.listdir("incoming") if f.endswith('.xml')]
@@ -161,8 +161,8 @@ def get_incoming_messages():
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
     
-@message_queue.get("/failed/{filename}", tags=["Messages"])
-def get_failed_message(filename: str):
+@message_queue.get("/failed/{filename}", tags=["Files"])
+def get_failed_file(filename: str):
     """Get content of specific failed XML file."""
     try:
         if not filename.endswith('.xml'):
@@ -178,8 +178,8 @@ def get_failed_message(filename: str):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
-@message_queue.get("/incoming/{filename}", tags=["Messages"])
-def get_incoming_message(filename: str):
+@message_queue.get("/incoming/{filename}", tags=["Files"])
+def get_incoming_file(filename: str):
     """Get content of specific incoming XML file."""
     try:
         if not filename.endswith('.xml'):
@@ -195,8 +195,8 @@ def get_incoming_message(filename: str):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
-@message_queue.get("/collected", tags=["Messages"])
-def get_collected_messages():
+@message_queue.get("/collected", tags=["Files"])
+def get_collected_files():
     """List XML files in collected directory."""
     try:
         files = [f for f in os.listdir("collected") if f.endswith('.xml')]
@@ -204,8 +204,8 @@ def get_collected_messages():
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
-@message_queue.get("/collected/{filename}", tags=["Messages"])
-def get_collected_message(filename: str):
+@message_queue.get("/collected/{filename}", tags=["Files"])
+def get_collected_file(filename: str):
     """Get content of specific collected XML file."""
     try:
         if not filename.endswith('.xml'):
@@ -221,7 +221,7 @@ def get_collected_message(filename: str):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
-@message_queue.post("/mark-failed/{filename}", tags=["Messages"])
+@message_queue.post("/mark-failed/{filename}", tags=["Files"])
 def mark_failed(filename: str):
     """Mark a file as failed."""
     try:
@@ -241,7 +241,7 @@ def mark_failed(filename: str):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
-@message_queue.post("/mark-collected/{filename}", tags=["Messages"])
+@message_queue.post("/mark-collected/{filename}", tags=["Files"])
 def mark_collected(filename: str):
     """Mark a file as collected."""
     try:
