@@ -294,6 +294,19 @@ API also available at  http://localhost:8770/docs
 - http://localhost:8770/mark-collected/{filename} - Allows you to clear file from incoming to collected directory
 - http://localhost:8770/collected - Lists collected files (Used mainly for archiving)
 - http://localhost:8770/collected/{filename} - Allows you to download file from collected directory (Used mainly for archiving)
+- http://localhost:8770/FIFO/out - If no files are available in queue returns `404 - No files in queue`, if files are in queue returns oldest file, and removes file from queue. Files are moved to `/collected` for possible recovery.
+
+### How to send file
+
+- Use http://localhost:8770/send - `POST`, accepts xml files. This is where you'd send any files you want to send to FedNow service.
+- Files are automatically renamed to {BANK_RTN}_DATE_TIME_XXXX.xml"
+
+### How to recive file
+- Method 1:
+    - Use http://localhost:8770/FIFO/out - If no files are available in queue returns `404 - No files in queue`, if files are in queue returns oldest file, and removes file from queue. Files are moved to `/collected` for possible recovery.
+- Method 2:
+    - Use http://localhost:8770/incoming/{filename} to fetch specific file from incoming.
+    - Requires user to manually track files and move files out of queue with http://localhost:8770/mark-failed/{filename} or http://localhost:8770/mark-collected/{filename}
 
 # RTP System
 
