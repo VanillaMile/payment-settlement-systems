@@ -268,3 +268,46 @@ def mark_collected(filename: str):
         raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
+
+@message_queue.get("/FIFO/out", tags=["Files"])
+def get_fifo_out():
+    """Get the next file from the FIFO queue."""
+    try:
+        # Get latest item from incoming folder
+        # Return this item as a file response
+        # Move the file to collected folder
+        incoming_files = [f for f in os.listdir("incoming") if f.endswith('.xml')]
+        if not incoming_files:
+            raise HTTPException(status_code=404, detail="No files in FIFO queue")
+
+        # Build a list of (filename, mtime) while handling races where files
+        # may disappear between listing and stat.
+        candidates = []
+        for f in incoming_files:
+            path = os.path.join("incoming", f)
+            try:
+                mtime = os.path.getmtime(path)
+            except FileNotFoundError:
+                continue
+            candidates.append((f, mtime))
+
+        if not candidates:
+            raise HTTPException(status_code=404, detail="No files in FIFO queue")
+
+        # Select the oldest file by modification time (mtime)
+        next_file = min(candidates, key=lambda t: t[1])[0]
+        src = os.path.join("incoming", next_file)
+        dst = os.path.join("collected", next_file)
+
+        try:
+            os.replace(src, dst)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="File not found when moving")
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc))
+
+        return FileResponse(dst, filename=next_file, media_type="application/xml")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
