@@ -10,6 +10,7 @@
 # 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999
 # 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999
 
+import json
 import os
 from datetime import datetime
 
@@ -1181,6 +1182,101 @@ def jsonToAchFile(json_data, settlement_date=None):
         ach_file.add_batch(batch)
     ach_file.build_ach() # Build the ACH file to calculate control values based on the content
     return ach_file
+
+def achFileToJson(ach_file: ACHFile):
+    """Function to convert an ACHFile object to a JSON representation of the file content, essentially the reverse of jsonToAchFile."""
+    json_data = {
+        "header": {
+            "record_type_code": ach_file.header['record_type_code'],
+            "priority_code": ach_file.header['priority_code'],
+            "immediate_destination": ach_file.header['immediate_destination'],
+            "immediate_origin": ach_file.header['immediate_origin'],
+            "file_creation_date": ach_file.header['file_creation_date'],
+            "file_creation_time": ach_file.header['file_creation_time'],
+            "file_id_modifier": ach_file.header['file_id_modifier'],
+            "record_size": ach_file.header['record_size'],
+            "blocking_factor": ach_file.header['blocking_factor'],
+            "format_code": ach_file.header['format_code'],
+            "immediate_destination_name": ach_file.header['immediate_destination_name'],
+            "immediate_origin_name": ach_file.header['immediate_origin_name'],
+            "reference_code": ach_file.header['reference_code']
+        },
+        "batches": [],
+        "control": {
+            "record_type_code": ach_file.control['record_type_code'],
+            "batch_count": ach_file.control['batch_count'],
+            "block_count": ach_file.control['block_count'],
+            "entry_count": ach_file.control['entry_count'],
+            "entry_hash": ach_file.control['entry_hash'],
+            "total_debit_amount_cents": ach_file.control['total_debit_amount_cents'],
+            "total_credit_amount_cents": ach_file.control['total_credit_amount_cents'],
+            "reserved": ach_file.control['reserved']
+        }
+    }
+
+    for batch in ach_file.batches:
+        batch_data = {
+            "header": {
+                "record_type_code": batch.header['record_type_code'],
+                "service_class_code": batch.header['service_class_code'],
+                "company_name": batch.header['company_name'],
+                "company_discretionary_data": batch.header['company_discretionary_data'],
+                "company_identification": batch.header['company_identification'],
+                "standard_entry_class_code": batch.header['standard_entry_class_code'],
+                "company_entry_description": batch.header['company_entry_description'],
+                "company_descriptive_date": batch.header['company_descriptive_date'],
+                "effective_entry_date": batch.header['effective_entry_date'],
+                "settlement_date": batch.header['settlement_date'],
+                "originator_status_code": batch.header['originator_status_code'],
+                "originating_dfi_identification": batch.header['originating_dfi_identification'],
+                "batch_number": batch.header['batch_number']
+            },
+            "entries": [],
+            "control": {
+                "record_type_code": batch.control['record_type_code'],
+                "service_class_code": batch.control['service_class_code'],
+                "entry_count": batch.control['entry_count'],
+                "entry_hash": batch.control['entry_hash'],
+                "total_debit_amount_cents": batch.control['total_debit_amount_cents'],
+                "total_credit_amount_cents": batch.control['total_credit_amount_cents'],
+                "company_identification": batch.control['company_identification'],
+                "message_authentication_code": batch.control['message_authentication_code'],
+                "reserved": batch.control['reserved'],
+                "originating_dfi_identification": batch.control['originating_dfi_identification'],
+                "batch_number": batch.control['batch_number']
+            }
+        }
+
+        for entry in batch.entries:
+            entry_data = {
+                "record_type_code": entry.record_type_code,
+                "transaction_code": entry.transaction_code,
+                "receiving_dfi_identification": entry.receiving_dfi_identification,
+                "check_digit": entry.check_digit,
+                "receiving_dfi_rtn": f"{entry.receiving_dfi_identification}{entry.check_digit}",
+                "dfi_account_number": entry.dfi_account_number,
+                "amount_cents": entry.amount_cents,
+                "individual_id_number": entry.individual_id_number,
+                "individual_name": entry.individual_name,
+                "discretionary_data": entry.discretionary_data,
+                "trace_number": entry.trace_number,
+                "addenda": []
+            }
+
+            for addenda in entry.addenda:
+                addenda_data = {
+                    "record_type_code": addenda.record_type_code,
+                    "addenda_type_code": addenda.addenda_type_code,
+                    "payment_related_information": addenda.payment_related_information,
+                    "addenda_sequence_number": addenda.addenda_sequence_number,
+                    "entry_detail_sequence_number": addenda.entry_detail_sequence_number
+                }
+                entry_data["addenda"].append(addenda_data)
+
+            batch_data["entries"].append(entry_data)
+        json_data["batches"].append(batch_data)
+
+    return json_data
     
 if __name__ == "__main__":
     ach_file = ACHFile()
@@ -1447,4 +1543,10 @@ if __name__ == "__main__":
     print("\n\nACH File build result from JSON:")
     for line in ach_file_from_json.build_ach():
         print(line)
+
+    sample3_ach_file = ACHFile()
+    sample3_ach_file.parse(file_path='sample3.ach')
+    json_representation = achFileToJson(sample3_ach_file)
+    print("\n\nJSON representation of ACH file parsed from sample3.ach:")
+    print(json.dumps(json_representation, indent=4))
             
