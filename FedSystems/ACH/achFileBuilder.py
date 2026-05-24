@@ -551,7 +551,9 @@ class ACHFile:
             """
             if self_calculate_control:
                 batch_count = len(self.batches)
-                block_count = (len(self.batches) * 2 + sum(len(batch.entries) + len(batch.entries) * len(entry.addenda) for batch in self.batches)) // 10 + 1 # Each batch has a header and control line, each entry has an entry line and potentially addenda lines. We divide by 10 to get the number of blocks, and add 1 for the file control line.
+                entry_and_addenda_count = sum(len(batch.entries) + sum(len(entry.addenda) for entry in batch.entries) for batch in self.batches)
+                total_lines_before_padding = 2 + (batch_count * 2) + entry_and_addenda_count # file header + file control + batch headers/controls + entry/addenda records
+                block_count = (total_lines_before_padding + 9) // 10
                 entry_count = sum(1 + len(entry.addenda) for batch in self.batches for entry in batch.entries)
                 entry_hash = sum(int(entry.receiving_dfi_identification) for batch in self.batches for entry in batch.entries) % 10**10
                 total_debit_amount_cents = sum(entry.amount_cents for batch in self.batches for entry in batch.entries if entry.transaction_code in ['27', '37', '26', '36']) # Debit transaction codes (27 and 37 are for prearranged payments and reversals, 26 and 36 are for return entries)
@@ -926,12 +928,12 @@ class ACHFile:
                         'message': f"Invalid service class code in batch header: {batch.header['service_class_code']} 200 - Mixed Debits and Credits, 220 - Credits Only, 225 - Debits Only"
                     })
 
-                if batch.header['standard_entry_class_code'] not in ['PPD', 'CCD', 'WEB', 'TEL']:
+                if batch.header['standard_entry_class_code'] not in ['PPD', 'CCD']:
                     line_errors.append({
                         'error_type': 'B',
                         'line_number': line_number,
                         'error_code': 2002,
-                        'message': f"Invalid standard entry class code in batch header: {batch.header['standard_entry_class_code']} Only 4 standard entry class codes are supported: PPD - Prearranged Payment and Deposit Entry, CCD - Corporate Credit or Debit, WEB - Internet-Initiated Entry, TEL - Telephone-Initiated Entry"
+                        'message': f"Invalid standard entry class code in batch header: {batch.header['standard_entry_class_code']} Only 2 standard entry class codes are currently supported: PPD - Prearranged Payment and Deposit Entry, CCD - Corporate Credit or Debit"
                     })
 
                 if batch.header['originator_status_code'] not in ['1', '2', '3']:
@@ -1043,6 +1045,142 @@ class ACHFile:
             return build_line_error_ack(line_errors)
 
         return build_success_ack()
+    
+def jsonToAchFile(json_data, settlement_date=None):
+    """Function to create an ACHFile object from a JSON representation of the file content.
+
+    Controls will be calculated based on the content of the batches and entries, so they don't need to be provided in the JSON.
+
+    The JSON structure should be as follows:
+{
+    "header": {
+        "immediate_destination": "090000515",
+        "immediate_origin": "040104018",
+        "file_creation_date": "240610", # Can be none, in which case it will be set to the current date in YYMMDD format
+        "file_creation_time": "1200", # Can be none, in which case it will be set to the current time
+        "file_id_modifier": "A",
+        "immediate_destination_name": "FRB Tungsten",
+        "immediate_origin_name": "Baguette store"
+    },
+    "batches": [
+        {
+            "header": {
+                "service_class_code": "200", # 200 for mixed debits and credits, 220 for credits only, 225 for debits only, can be left null to figure out automagically
+                "company_name": "Baguette store",
+                "company_discretionary_data": "",
+                "company_identification": "1313131310",
+                "standard_entry_class_code": "PPD", # Currently only PPD and CCD are supported
+                "company_entry_description": "LEEK PAY", # Will be truncated to 10 characters if longer
+                "company_descriptive_date": "240610", # Can be none, in which case it will be set to the header date in YYMMDD format
+                "effective_entry_date": "240610", # Can be none, in which case it will be set to the header date in YYMMDD format
+                "settlement_date": "", # Will be set by the ACH operator, should be left empty
+                "originator_status_code": "1",
+                "originating_dfi_identification": "04010401"
+            },
+            "entries": [
+                {
+                    "transaction_code": "22",
+                    "receiving_dfi_rtn": "010101012",
+                    "dfi_account_number": "123456789",
+                    "amount_cents": 100,
+                    "individual_id_number": "",
+                    "individual_name": "Leek store",
+                    "trace_number": "040104010000001", # Can be null if needs to be generated, HOWEVER, if previously provided it should be the same! i.e. If you want to return entry, or you're forwarding the file.
+                    "addenda": [
+                        {
+                            "payment_related_information": "31 tons of leek purchase!", # Will be truncated to 80 characters if longer
+                        }
+                    ]
+                },
+                {
+                    "transaction_code": "22",
+                    "receiving_dfi_rtn": "010101012",
+                    "dfi_account_number": "123456789",
+                    "amount_cents": 100,
+                    "individual_id_number": "",
+                    "individual_name": "Leek store",
+                    "trace_number": "040104010000001",
+                    "addenda": [
+                        {
+                            "payment_related_information": "31 tons of leek purchase!", # Will be truncated to 80 characters if longer
+                        }
+                    ]
+                }
+            ],
+        }
+    ],
+}
+    """
+    ach_file = ACHFile()
+    ach_file.header = {
+        'record_type_code': '1',
+        'priority_code': '01',
+        'immediate_destination': json_data['header']['immediate_destination'],
+        'immediate_origin': json_data['header']['immediate_origin'],
+        'file_creation_date': json_data['header'].get('file_creation_date') or datetime.now().strftime('%y%m%d'),
+        'file_creation_time': json_data['header'].get('file_creation_time') or datetime.now().strftime('%H%M'),
+        'file_id_modifier': json_data['header'].get('file_id_modifier') or 'A',
+        'record_size': '094',
+        'blocking_factor': '10',
+        'format_code': '1',
+        'immediate_destination_name': json_data['header'].get('immediate_destination_name') or '',
+        'immediate_origin_name': json_data['header'].get('immediate_origin_name') or '',
+        'reference_code': json_data['header'].get('reference_code') or ''
+    }
+
+    for batch_index, batch_data in enumerate(json_data['batches'], start=1):
+        batch = ACHBatch()
+
+        batch_sevice_class_code = batch_data['header']['service_class_code'] or (
+            '225' if all(entry['transaction_code'] in ['26', '27', '36', '37', '47', '57', '67', '87'] for entry in batch_data['entries']) else
+            '220' if all(entry['transaction_code'] in ['21', '22', '31', '32', '42', '52', '62', '82'] for entry in batch_data['entries']) else
+            '200'
+        )
+
+        batch.header = {
+            'record_type_code': '5',
+            'service_class_code': batch_sevice_class_code,
+            'company_name': batch_data['header']['company_name'],
+            'company_discretionary_data': batch_data['header'].get('company_discretionary_data') or '',
+            'company_identification': batch_data['header']['company_identification'],
+            'standard_entry_class_code': batch_data['header']['standard_entry_class_code'],
+            'company_entry_description': batch_data['header']['company_entry_description'][:10], # Truncate to 10 characters if longer
+            'company_descriptive_date': batch_data['header'].get('company_descriptive_date') or ach_file.header['file_creation_date'],
+            'effective_entry_date': batch_data['header'].get('effective_entry_date') or ach_file.header['file_creation_date'],
+            'settlement_date': settlement_date or '', # Will be set by the ACH operator, should be left empty
+            'originator_status_code': batch_data['header']['originator_status_code'],
+            'originating_dfi_identification': batch_data['header']['originating_dfi_identification'],
+            'batch_number': batch_data['header'].get('batch_number') or f'{batch_index:07d}'
+        }
+
+        for entry_index, entry_data in enumerate(batch_data['entries'], start=1):
+            entry = ACHEntry().add_record(
+                record_type_code='6',
+                transaction_code=entry_data['transaction_code'],
+                receiving_dfi_identification=entry_data['receiving_dfi_rtn'][:-1],
+                check_digit=entry_data['receiving_dfi_rtn'][-1],
+                dfi_account_number=entry_data['dfi_account_number'],
+                amount_cents=entry_data['amount_cents'],
+                individual_id_number=entry_data.get('individual_id_number') or '',
+                individual_name=entry_data.get('individual_name') or '',
+                discretionary_data='',
+                addenda_record_indicator='1' if entry_data.get('addenda') else '0',
+                trace_number=entry_data.get('trace_number') or f'{batch_data["header"]["originating_dfi_identification"]}{entry_index:07d}' # Originating DFI identification (8 digits) + batch number (7 digits)
+            )
+
+            for addenda_index, addenda_data in enumerate(entry_data.get('addenda', []), start=1):
+                addenda = ACHAddenda().add_record(
+                    record_type_code='7',
+                    addenda_type_code='05', # Currently only supporting payment related information addenda, which have a type code of 05
+                    payment_related_information=addenda_data['payment_related_information'][:80], # Truncate to 80 characters if longer
+                    addenda_sequence_number=f'{addenda_index:04d}', # Generates next addenda sequence number based on, will reset for each entry
+                    entry_detail_sequence_number=entry.trace_number[-7:] # The entry detail sequence number should match the last 7 digits of the trace number
+                )
+                entry.add_addenda(addenda)
+            batch.add_entry(entry)
+        ach_file.add_batch(batch)
+    ach_file.build_ach() # Build the ACH file to calculate control values based on the content
+    return ach_file
     
 if __name__ == "__main__":
     ach_file = ACHFile()
@@ -1183,3 +1321,130 @@ if __name__ == "__main__":
         print(line)
 
     print(new_ach_file.validate(is_parsed=False))
+
+    json_data = {
+        "header": {
+            "immediate_destination": "090000515",
+            "immediate_origin": "040104018",
+            "file_creation_date": None, # Can be none, in which case it will be set to the current date in YYMMDD format
+            "file_creation_time": None, # Can be none, in which case it will be set to the current time
+            "file_id_modifier": None, # Can be none, in which case it will be set to 'A'
+            "immediate_destination_name": "FRB Tungsten",
+            "immediate_origin_name": "Baguette store"
+        },
+        "batches": [
+            {
+                "header": {
+                    "service_class_code": None, # Can be none to figure out automagically based on the transaction codes of the entries (if all debit then 225, if all credit then 220, otherwise 200 for mixed)
+                    "company_name": "Baguette store",
+                    "company_discretionary_data": None,
+                    "company_identification": "1313131310",
+                    "standard_entry_class_code": "PPD", # Currently only PPD and CCD are supported
+                    "company_entry_description": "LEEK PAY", # Will be truncated to 10 characters if longer
+                    "company_descriptive_date": None, # Can be none, in which case it will be set to the header date in YYMMDD format
+                    "effective_entry_date": None, # Can be none, in which case it will be set to the header date in YYMMDD format
+                    "settlement_date": None, # Will be set by the ACH operator, should be left empty
+                    "originator_status_code": "1",
+                    "originating_dfi_identification": "04010401"
+                },
+                "entries": [
+                    {
+                        "transaction_code": "22",
+                        "receiving_dfi_rtn": "010101012",
+                        "dfi_account_number": "39",
+                        "amount_cents": 100,
+                        "individual_id_number": None,
+                        "individual_name": "Leek store",
+                        "trace_number": "040104010000001",
+                        "addenda": [
+                            {
+                                "payment_related_information": "31 tons of leek purchase!", # Will be truncated to 80 characters if longer
+                            }
+                        ]
+                    },
+                    {
+                        "transaction_code": "22",
+                        "receiving_dfi_rtn": "010101012",
+                        "dfi_account_number": "39",
+                        "amount_cents": 100,
+                        "individual_id_number": None,
+                        "individual_name": "Leek store",
+                        "trace_number": "040104010000002",
+                        # No addenda for this entry
+                    }
+                ],
+            },
+            {
+                "header": {
+                    "service_class_code": None, # Can be none to figure out automagically based on the transaction codes of the entries (if all debit then 225, if all credit then 220, otherwise 200 for mixed)
+                    "company_name": "Baguette Outlet",
+                    "company_discretionary_data": None,
+                    "company_identification": "1555666777",
+                    "standard_entry_class_code": "PPD", # Currently only PPD and CCD are supported
+                    "company_entry_description": "LEEK BUY", # Will be truncated to 10 characters if longer
+                    "company_descriptive_date": None, # Can be none, in which case it will be set to the header date in YYMMDD format
+                    "effective_entry_date": None, # Can be none, in which case it will be set to the header date in YYMMDD format
+                    "settlement_date": None, # Will be set by the ACH operator, should be left empty
+                    "originator_status_code": "1",
+                    "originating_dfi_identification": "12341234"
+                },
+                "entries": [
+                    {
+                        "transaction_code": "22",
+                        "receiving_dfi_rtn": "514310008",
+                        "dfi_account_number": "31",
+                        "amount_cents": 100,
+                        "individual_id_number": None,
+                        "individual_name": "Leek store",
+                        "trace_number": None,
+                        "addenda": [
+                            {
+                                "payment_related_information": "31 tons of leek purchase!", # Will be truncated to 80 characters if longer
+                            }
+                        ]
+                    },
+                    {
+                        "transaction_code": "22",
+                        "receiving_dfi_rtn": "514310008",
+                        "dfi_account_number": "31",
+                        "amount_cents": 100,
+                        "individual_id_number": None,
+                        "individual_name": "Leek store",
+                        "trace_number": None,
+                        # No addenda for this entry
+                    }
+                ],
+            }
+        ],
+    }
+
+    ach_file_from_json = jsonToAchFile(json_data)
+    print("\n\nACH File Header from JSON:", ach_file_from_json.get_header())
+    for i, batch in enumerate(ach_file_from_json.get_batches()):
+        print(f"Batch {i+1} Header from JSON:", batch.header)
+        for j, entry in enumerate(batch.entries):
+            print(f"  Entry {j+1} from JSON:")
+            print(f"    Record Type Code: {entry.record_type_code}")
+            print(f"    Transaction Code: {entry.transaction_code}")
+            print(f"    Receiving DFI Identification: {entry.receiving_dfi_identification}")
+            print(f"    Check Digit: {entry.check_digit}")
+            print(f"    DFI Account Number: {entry.dfi_account_number}")
+            print(f"    Amount (Converted from cents): ${entry.amount_cents / 100:.2f}")
+            print(f"    Individual ID Number: {entry.individual_id_number}")
+            print(f"    Individual Name: {entry.individual_name}")
+            print(f"    Discretionary Data: {entry.discretionary_data}")
+            print(f"    Addenda Record Indicator: {entry.addenda_record_indicator}")
+            print(f"    Trace Number: {entry.trace_number}")
+            for k, addenda in enumerate(entry.addenda):
+                print(f"      Addenda {k+1} from JSON:")
+                print(f"        Record Type Code: {addenda.record_type_code}")
+                print(f"        Addenda Type Code: {addenda.addenda_type_code}")
+                print(f"        Payment Related Information: {addenda.payment_related_information}")
+                print(f"        Addenda Sequence Number: {addenda.addenda_sequence_number}")
+                print(f"        Entry Detail Sequence Number: {addenda.entry_detail_sequence_number}")
+
+    ach_file_from_json.build_ach()
+    print("\n\nACH File build result from JSON:")
+    for line in ach_file_from_json.build_ach():
+        print(line)
+            
