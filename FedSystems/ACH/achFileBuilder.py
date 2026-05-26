@@ -539,12 +539,41 @@ class ACHFile:
             "9000001000001000000030032041132000000000000000000030150                                       ",
         ]
         """
+        def fit_left(value, width):
+            """Truncate then left-pad to an exact width."""
+            text = '' if value is None else str(value)
+            return text[:width].ljust(width)
+
+        def fit_right(value, width):
+            """Truncate from the left then right-pad to an exact width."""
+            text = '' if value is None else str(value)
+            return text[-width:].rjust(width)
+
+        def fit_zero_right(value, width):
+            """Keep digits/characters right-aligned and zero padded to exact width."""
+            text = '' if value is None else str(value)
+            return text[-width:].zfill(width)
+
         def build_header_line():
             """Something like this 94-character line empty space filled with spaces:
             101 090000515 0401040182604050900A094101FRB Tungsten           Baguette Bank                  
             """
-            file_id_modifier = self.header.get('file_id_modifier') or 'A'
-            return f"1{self.header['priority_code']}{self.header['immediate_destination']:>10}{self.header['immediate_origin']:>10}{self.header['file_creation_date']}{self.header['file_creation_time']}{file_id_modifier}{self.header['record_size']}{self.header['blocking_factor']}{self.header['format_code']}{self.header['immediate_destination_name']:<23}{self.header['immediate_origin_name']:<23}{self.header['reference_code']:<8}"
+            file_id_modifier = fit_left(self.header.get('file_id_modifier') or 'A', 1)
+            return (
+                "1"
+                f"{fit_left(self.header.get('priority_code'), 2)}"
+                f"{fit_right(self.header.get('immediate_destination'), 10)}"
+                f"{fit_right(self.header.get('immediate_origin'), 10)}"
+                f"{fit_left(self.header.get('file_creation_date'), 6)}"
+                f"{fit_left(self.header.get('file_creation_time'), 4)}"
+                f"{file_id_modifier}"
+                f"{fit_left(self.header.get('record_size'), 3)}"
+                f"{fit_left(self.header.get('blocking_factor'), 2)}"
+                f"{fit_left(self.header.get('format_code'), 1)}"
+                f"{fit_left(self.header.get('immediate_destination_name'), 23)}"
+                f"{fit_left(self.header.get('immediate_origin_name'), 23)}"
+                f"{fit_left(self.header.get('reference_code'), 8)}"
+            )
         
         def build_file_control_line():
             """Something like this 94-character line empty space filled with spaces:
@@ -561,12 +590,12 @@ class ACHFile:
                 total_credit_amount_cents = sum(entry.amount_cents for batch in self.batches for entry in batch.entries if entry.transaction_code in ['22', '32', '21', '31']) # Credit transaction codes (22 and 32 are for prearranged payments and reversals, 21 and 31 are for return entries)
                 reserved = ''
                 file_control_line = (
-                    f"9{batch_count:06}{block_count:06}{entry_count:08}{entry_hash:010}{total_debit_amount_cents:012}{total_credit_amount_cents:012}{reserved:<39}"
+                    f"9{batch_count:06}{block_count:06}{entry_count:08}{entry_hash:010}{total_debit_amount_cents:012}{total_credit_amount_cents:012}{fit_left(reserved, 39)}"
                 )
                 return file_control_line
             else:
                 file_control_line = (
-                    f"9{self.control['batch_count']:06}{self.control['block_count']:06}{self.control['entry_count']:08}{self.control['entry_hash']:010}{self.control['total_debit_amount_cents']:012}{self.control['total_credit_amount_cents']:012}{self.control['reserved']:<39}"
+                    f"9{self.control['batch_count']:06}{self.control['block_count']:06}{self.control['entry_count']:08}{self.control['entry_hash']:010}{self.control['total_debit_amount_cents']:012}{self.control['total_credit_amount_cents']:012}{fit_left(self.control.get('reserved'), 39)}"
                 )
                 return file_control_line
             
@@ -575,19 +604,51 @@ class ACHFile:
                 """Something like this 94-character line empty space filled with spaces:
                 5220Baguette store                      1313131310PPDLEEK PAY        260406   1040104010000001
                 """
-                return f"5{batch.header['service_class_code']}{batch.header['company_name']:<16}{batch.header['company_discretionary_data']:<20}{batch.header['company_identification']:<10}{batch.header['standard_entry_class_code']:<3}{batch.header['company_entry_description']:<10}{batch.header['company_descriptive_date']:<6}{batch.header['effective_entry_date']:<6}{batch.header['settlement_date']:<3}{batch.header['originator_status_code']:<1}{batch.header['originating_dfi_identification']:<8}{batch.header['batch_number']:<7}"
+                return (
+                    "5"
+                    f"{fit_left(batch.header.get('service_class_code'), 3)}"
+                    f"{fit_left(batch.header.get('company_name'), 16)}"
+                    f"{fit_left(batch.header.get('company_discretionary_data'), 20)}"
+                    f"{fit_left(batch.header.get('company_identification'), 10)}"
+                    f"{fit_left(batch.header.get('standard_entry_class_code'), 3)}"
+                    f"{fit_left(batch.header.get('company_entry_description'), 10)}"
+                    f"{fit_left(batch.header.get('company_descriptive_date'), 6)}"
+                    f"{fit_left(batch.header.get('effective_entry_date'), 6)}"
+                    f"{fit_left(batch.header.get('settlement_date'), 3)}"
+                    f"{fit_left(batch.header.get('originator_status_code'), 1)}"
+                    f"{fit_left(batch.header.get('originating_dfi_identification'), 8)}"
+                    f"{fit_left(batch.header.get('batch_number'), 7)}"
+                )
 
             def build_entry_line(entry):
                 """Something like this 94-character line empty space filled with spaces:
                 62201010101239               0000015075               Leek store              1040104010000001
                 """
-                return f"6{entry.transaction_code}{entry.receiving_dfi_identification:>8}{entry.check_digit}{entry.dfi_account_number:<17}{entry.amount_cents:>010}{entry.individual_id_number:<15}{entry.individual_name:<22}{entry.discretionary_data:<2}{entry.addenda_record_indicator:<1}{entry.trace_number:<15}"
+                return (
+                    "6"
+                    f"{fit_left(entry.transaction_code, 2)}"
+                    f"{fit_right(entry.receiving_dfi_identification, 8)}"
+                    f"{fit_left(entry.check_digit, 1)}"
+                    f"{fit_left(entry.dfi_account_number, 17)}"
+                    f"{fit_zero_right(entry.amount_cents, 10)}"
+                    f"{fit_left(entry.individual_id_number, 15)}"
+                    f"{fit_left(entry.individual_name, 22)}"
+                    f"{fit_left(entry.discretionary_data, 2)}"
+                    f"{fit_left(entry.addenda_record_indicator, 1)}"
+                    f"{fit_left(entry.trace_number, 15)}"
+                )
             
             def build_addenda_line(addenda):
                 """Something like this 94-character line empty space filled with spaces:
                 705A 31 tons of leek purchase!                                                     00010000001
                 """
-                return f"7{addenda.addenda_type_code}{addenda.payment_related_information:<80}{addenda.addenda_sequence_number:<4}{addenda.entry_detail_sequence_number:<7}"
+                return (
+                    "7"
+                    f"{fit_left(addenda.addenda_type_code, 2)}"
+                    f"{fit_left(addenda.payment_related_information, 80)}"
+                    f"{fit_left(addenda.addenda_sequence_number, 4)}"
+                    f"{fit_left(addenda.entry_detail_sequence_number, 7)}"
+                )
             
             def build_batch_control_line():
                     """Something like this 94-character line empty space filled with spaces:
@@ -611,11 +672,11 @@ class ACHFile:
                     f"{entry_hash:010}"
                     f"{total_debit_amount_cents:012}"
                     f"{total_credit_amount_cents:012}"
-                    f"{batch.header['company_identification']:<10}"
-                    f"{'':<19}"
-                    f"{'':<6}"
-                    f"{batch.header['originating_dfi_identification']:0>8}"
-                    f"{batch.header['batch_number']:0>7}"
+                    f"{fit_left(batch.header.get('company_identification'), 10)}"
+                    f"{fit_left('', 19)}"
+                    f"{fit_left('', 6)}"
+                    f"{fit_zero_right(batch.header.get('originating_dfi_identification'), 8)}"
+                    f"{fit_zero_right(batch.header.get('batch_number'), 7)}"
                 )
             else:
                 batch_control_line = (
@@ -624,11 +685,11 @@ class ACHFile:
                     f"{int(batch.control['entry_hash']) % 10**10:010}"
                     f"{int(batch.control['total_debit_amount_cents']):012}"
                     f"{int(batch.control['total_credit_amount_cents']):012}"
-                    f"{batch.control['company_identification']:<10}"
-                    f"{batch.control['message_authentication_code']:<19}"
-                    f"{batch.control['reserved']:<6}"
-                    f"{batch.control['originating_dfi_identification']:0>8}"
-                    f"{batch.control['batch_number']:0>7}"
+                    f"{fit_left(batch.control.get('company_identification'), 10)}"
+                    f"{fit_left(batch.control.get('message_authentication_code'), 19)}"
+                    f"{fit_left(batch.control.get('reserved'), 6)}"
+                    f"{fit_zero_right(batch.control.get('originating_dfi_identification'), 8)}"
+                    f"{fit_zero_right(batch.control.get('batch_number'), 7)}"
                 )
             batch_lines.append(batch_control_line)
             return batch_lines
@@ -647,6 +708,11 @@ class ACHFile:
             # If not, we add padding lines of 9s until it does
             padding_lines_needed = (10 - (no_of_lines % 10)) % 10
             ach_file_lines.extend(['9' * 94] * padding_lines_needed)
+
+        # Enforce exact fixed-width lines for all built records.
+        for line in ach_file_lines:
+            if len(line) != 94:
+                raise ValueError(f"Built ACH line is not 94 characters: {line}")
 
         if self_calculate_control:
             # Clear current values
@@ -1116,8 +1182,8 @@ def jsonToAchFile(json_data, settlement_date=None):
     ach_file.header = {
         'record_type_code': '1',
         'priority_code': '01',
-        'immediate_destination': json_data['header']['immediate_destination'],
-        'immediate_origin': json_data['header']['immediate_origin'],
+        'immediate_destination': json_data['header'].get('immediate_destination') or '',
+        'immediate_origin': json_data['header'].get('immediate_origin') or '',
         'file_creation_date': json_data['header'].get('file_creation_date') or datetime.now().strftime('%y%m%d'),
         'file_creation_time': json_data['header'].get('file_creation_time') or datetime.now().strftime('%H%M'),
         'file_id_modifier': json_data['header'].get('file_id_modifier') or 'A',
@@ -1132,7 +1198,7 @@ def jsonToAchFile(json_data, settlement_date=None):
     for batch_index, batch_data in enumerate(json_data['batches'], start=1):
         batch = ACHBatch()
 
-        batch_sevice_class_code = batch_data['header']['service_class_code'] or (
+        batch_sevice_class_code = batch_data['header'].get('service_class_code') or (
             '225' if all(entry['transaction_code'] in ['26', '27', '36', '37', '47', '57', '67', '87'] for entry in batch_data['entries']) else
             '220' if all(entry['transaction_code'] in ['21', '22', '31', '32', '42', '52', '62', '82'] for entry in batch_data['entries']) else
             '200'
@@ -1141,30 +1207,30 @@ def jsonToAchFile(json_data, settlement_date=None):
         batch.header = {
             'record_type_code': '5',
             'service_class_code': batch_sevice_class_code,
-            'company_name': batch_data['header']['company_name'],
+            'company_name': batch_data['header'].get('company_name') or '',
             'company_discretionary_data': batch_data['header'].get('company_discretionary_data') or '',
-            'company_identification': batch_data['header']['company_identification'],
-            'standard_entry_class_code': batch_data['header']['standard_entry_class_code'],
-            'company_entry_description': batch_data['header']['company_entry_description'][:10], # Truncate to 10 characters if longer
+            'company_identification': batch_data['header'].get('company_identification') or '',
+            'standard_entry_class_code': batch_data['header'].get('standard_entry_class_code') or '',
+            'company_entry_description': batch_data['header'].get('company_entry_description') or '', # Truncate to 10 characters if longer
             'company_descriptive_date': batch_data['header'].get('company_descriptive_date') or ach_file.header['file_creation_date'],
             'effective_entry_date': batch_data['header'].get('effective_entry_date') or ach_file.header['file_creation_date'],
             'settlement_date': settlement_date or '', # Will be set by the ACH operator, should be left empty
-            'originator_status_code': batch_data['header']['originator_status_code'],
-            'originating_dfi_identification': batch_data['header']['originating_dfi_identification'],
+            'originator_status_code': batch_data['header'].get('originator_status_code') or '1',
+            'originating_dfi_identification': batch_data['header'].get('originating_dfi_identification') or '',
             'batch_number': batch_data['header'].get('batch_number') or f'{batch_index:07d}'
         }
 
         for entry_index, entry_data in enumerate(batch_data['entries'], start=1):
             entry = ACHEntry().add_record(
                 record_type_code='6',
-                transaction_code=entry_data['transaction_code'],
-                receiving_dfi_identification=entry_data['receiving_dfi_rtn'][:-1],
-                check_digit=entry_data['receiving_dfi_rtn'][-1],
-                dfi_account_number=entry_data['dfi_account_number'],
-                amount_cents=entry_data['amount_cents'],
+                transaction_code=entry_data.get('transaction_code') or '',
+                receiving_dfi_identification=entry_data.get('receiving_dfi_rtn', '')[:-1],
+                check_digit=entry_data.get('receiving_dfi_rtn', '')[-1],
+                dfi_account_number=entry_data.get('dfi_account_number') or '',
+                amount_cents=entry_data.get('amount_cents') or 0,
                 individual_id_number=entry_data.get('individual_id_number') or '',
                 individual_name=entry_data.get('individual_name') or '',
-                discretionary_data='',
+                discretionary_data=entry_data.get('discretionary_data') or '',
                 addenda_record_indicator='1' if entry_data.get('addenda') else '0',
                 trace_number=entry_data.get('trace_number') or f'{batch_data["header"]["originating_dfi_identification"]}{entry_index:07d}' # Originating DFI identification (8 digits) + batch number (7 digits)
             )
@@ -1173,7 +1239,7 @@ def jsonToAchFile(json_data, settlement_date=None):
                 addenda = ACHAddenda().add_record(
                     record_type_code='7',
                     addenda_type_code='05', # Currently only supporting payment related information addenda, which have a type code of 05
-                    payment_related_information=addenda_data['payment_related_information'][:80], # Truncate to 80 characters if longer
+                    payment_related_information=addenda_data.get('payment_related_information', '')[:80], # Truncate to 80 characters if longer
                     addenda_sequence_number=f'{addenda_index:04d}', # Generates next addenda sequence number based on, will reset for each entry
                     entry_detail_sequence_number=entry.trace_number[-7:] # The entry detail sequence number should match the last 7 digits of the trace number
                 )

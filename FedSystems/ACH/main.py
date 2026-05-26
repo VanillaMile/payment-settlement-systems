@@ -1,6 +1,6 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import os
 from typing import Optional
 import re
@@ -13,6 +13,7 @@ from datetime import datetime
 import psycopg2
 import psycopg2.extras
 from dotenv import load_dotenv
+from achFileBuilder import *
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -618,6 +619,184 @@ async def funds_transfer(transfer_data: FundsTransferRequest):
             raise e
         logger.exception("Failed to add funds transfer: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
+
+class JsonToAchAddenda(BaseModel):
+    payment_related_information: str = Field(
+        ..., description="Free-form addenda text, truncated to 80 characters if needed."
+    )
+
+
+class JsonToAchEntry(BaseModel):
+    transaction_code: str = Field(..., description="ACH transaction code.")
+    receiving_dfi_rtn: str = Field(..., description="9-digit receiving DFI routing number.")
+    dfi_account_number: str = Field(..., description="Receiver account number.")
+    amount_cents: int = Field(..., ge=0, description="Amount in cents.")
+    individual_id_number: Optional[str] = Field(None, description="Optional individual ID number.")
+    individual_name: Optional[str] = Field(None, description="Optional individual name.")
+    trace_number: Optional[str] = Field(None, description="Optional trace number; generated if omitted.")
+    addenda: Optional[list[JsonToAchAddenda]] = Field(None, description="Optional addenda records for the entry.")
+
+
+class JsonToAchBatchHeader(BaseModel):
+    company_name: str = Field(..., description="Originating company name.")
+    company_identification: str = Field(..., description="Originator/company identification.")
+    standard_entry_class_code: str = Field(..., description="SEC code, for example PPD or CCD.")
+    originating_dfi_identification: str = Field(..., description="8-digit originating DFI identification.")
+    service_class_code: Optional[str] = Field(None, description="Optional service class code; derived if omitted.")
+    company_discretionary_data: Optional[str] = Field(None, description="Optional company discretionary data.")
+    company_entry_description: Optional[str] = Field(None, description="Optional batch description.")
+    company_descriptive_date: Optional[str] = Field(None, description="Optional descriptive date; defaults to file creation date.")
+    effective_entry_date: Optional[str] = Field(None, description="Optional effective date; defaults to file creation date.")
+    settlement_date: Optional[str] = Field(None, description="Optional settlement date placeholder.")
+    originator_status_code: Optional[str] = Field(None, description="Optional originator status code; defaults to 1.")
+    batch_number: Optional[str] = Field(None, description="Optional batch number; generated if omitted.")
+
+
+class JsonToAchBatch(BaseModel):
+    header: JsonToAchBatchHeader
+    entries: list[JsonToAchEntry]
+
+
+class JsonToAchFileHeader(BaseModel):
+    immediate_destination: str = Field(..., description="Destination routing number.")
+    immediate_origin: str = Field(..., description="Origin routing number.")
+    immediate_destination_name: str = Field(..., description="Destination name.")
+    immediate_origin_name: str = Field(..., description="Origin name.")
+    file_creation_date: Optional[str] = Field(None, description="Optional YYMMDD file creation date; defaults to today.")
+    file_creation_time: Optional[str] = Field(None, description="Optional HHMM file creation time; defaults to now.")
+    file_id_modifier: Optional[str] = Field(None, description="Optional file ID modifier; defaults to A.")
+    reference_code: Optional[str] = Field(None, description="Optional reference code.")
+
+
+class JsonToAchFileData(BaseModel):
+    header: JsonToAchFileHeader
+    batches: list[JsonToAchBatch]
+
+
+class JsonToAchRequest(BaseModel):
+    data: JsonToAchFileData
+
+    class Config:
+        json_schema_extra = {
+            "examples": [
+                {
+                    "data": {
+                        "header": {
+                            "immediate_destination": "090000515",
+                            "immediate_origin": "040104018",
+                            "immediate_destination_name": "FRB Tungsten",
+                            "immediate_origin_name": "Baguette store"
+                        },
+                        "batches": [
+                            {
+                                "header": {
+                                    "company_name": "Baguette store",
+                                    "company_identification": "1313131310",
+                                    "standard_entry_class_code": "PPD",
+                                    "originating_dfi_identification": "04010401"
+                                },
+                                "entries": [
+                                    {
+                                        "transaction_code": "22",
+                                        "receiving_dfi_rtn": "010101012",
+                                        "dfi_account_number": "123456789",
+                                        "amount_cents": 100,
+                                        "individual_name": "Leek store"
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                },
+                {
+                    "data": {
+                        "header": {
+                            "immediate_destination": "090000515",
+                            "immediate_origin": "040104018",
+                            "immediate_destination_name": "FRB Tungsten",
+                            "immediate_origin_name": "Baguette store",
+                            "file_creation_date": "260525",
+                            "file_creation_time": "1200",
+                            "file_id_modifier": "A",
+                            "reference_code": ""
+                        },
+                        "batches": [
+                            {
+                                "header": {
+                                    "service_class_code": "200",
+                                    "company_name": "Baguette store",
+                                    "company_discretionary_data": "",
+                                    "company_identification": "1313131310",
+                                    "standard_entry_class_code": "PPD",
+                                    "company_entry_description": "LEEK PAY",
+                                    "company_descriptive_date": "260525",
+                                    "effective_entry_date": "260525",
+                                    "settlement_date": "",
+                                    "originator_status_code": "1",
+                                    "originating_dfi_identification": "04010401",
+                                    "batch_number": "0000001"
+                                },
+                                "entries": [
+                                    {
+                                        "transaction_code": "22",
+                                        "receiving_dfi_rtn": "010101012",
+                                        "dfi_account_number": "123456789",
+                                        "amount_cents": 100,
+                                        "individual_id_number": "",
+                                        "individual_name": "Leek store",
+                                        "trace_number": "040104010000001",
+                                        "addenda": [
+                                            {
+                                                "payment_related_information": "31 tons of leek purchase!"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+
+
+@ach.post("/json-to-ach")
+async def json_to_ach_helper(data: JsonToAchRequest, bank_rtn: Optional[str] = ""):
+    """Convert JSON ACH file description to NACHA format string.
+
+    # **This endpoint does not validate the file!**
+
+    ## Too long values will be truncated.
+     
+    It will return it how you send it, even if it's wrong or incomplete.
+
+    In the example you can see the minimal required data to produce a valid ACH file.
+
+    ## Check out schemas `JsonToAchFileData` to see all the optional fields.
+
+    Inside `FedSystems/ACH` you can find `sample_full_request.json` with fully filled out example data covering all fields.
+    """
+    try:
+        ach_result = jsonToAchFile(data.data.model_dump(exclude_none=True))
+
+        # Support either an ACHFile-like object, a list of NACHA lines, or plain text.
+        if hasattr(ach_result, "build_ach") and callable(ach_result.build_ach):
+            ach_lines = ach_result.build_ach()
+            ach_content = "\n".join(ach_lines) if isinstance(ach_lines, list) else str(ach_lines)
+        elif isinstance(ach_result, list):
+            ach_content = "\n".join(str(line) for line in ach_result)
+        else:
+            ach_content = str(ach_result)
+
+        filename = f"{bank_rtn}_{datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')}.ach"
+        return Response(
+            content=ach_content,
+            media_type="application/octet-stream",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except Exception as e:
+        logger.exception("Failed to convert JSON to ACH: %s", e)
+        raise HTTPException(status_code=400, detail=str(e))
 
 def collect_inbound_files():
     # TODO: PLACEHOLDER - Change this function to actually collect files from the SFTP inbound folders, move them to a collection directory, and produce a report. This is just a stub for now.
