@@ -763,7 +763,7 @@ Injects liquidity into selected bank.
         </FinInstnId>
       </DbtrAgt>
       <Dbtr>
-        <Nm>Jan Kowalski</Nm>
+        <Nm>Sender name</Nm>
       </Dbtr>
       <DbtrAcct>
         <Id>
@@ -781,7 +781,7 @@ Injects liquidity into selected bank.
         </FinInstnId>
       </CdtrAgt>
       <Cdtr>
-        <Nm>Firma Handlowa XYZ</Nm>
+        <Nm>Receiver name</Nm>
       </Cdtr>
       <CdtrAcct>
         <Id>
