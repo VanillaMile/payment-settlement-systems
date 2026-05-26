@@ -820,6 +820,32 @@ async def ach_to_json_helper(file: UploadFile):
         logger.exception("Failed to convert ACH to JSON: %s", e)
         raise HTTPException(status_code=400, detail=str(e))
 
+@ach.post("/validate-ach", tags=["Helpers, banks can use this to generate/convert/validate ACH files"])
+async def validate_ach_helper(file: UploadFile, immediate_destination_rtn: Optional[str] = None, immediate_origin_rtn: Optional[str] = None):
+    """Validate an uploaded ACH file.
+
+    - immediate_destination_rtn is optional, if provided it will check if the file's immediate destination matches it.
+    - immediate_origin_rtn is optional, if provided it will check if the file's immediate origin matches it.
+
+    Returns .ack file.
+    """
+    try:
+        achFile = ACHFile()
+        content = await file.read()
+        lines = convertFileToLines(content.decode("utf-8", errors="replace"))
+        filename = file.filename or None
+        achFile.parse(file_path=filename, lines = lines, force_ack_on_format_error=True)
+        validation_report = achFile.validate(is_parsed=True, immediate_destination=immediate_destination_rtn, immediate_origin=immediate_origin_rtn)
+        ack_filename = f"{os.path.splitext(file.filename or 'validation')[0]}.ack"
+        return Response(
+            content=validation_report,
+            media_type="text/plain; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{ack_filename}"'},
+        )
+    except Exception as e:
+        logger.exception("Failed to validate ACH file: %s", e)
+        raise HTTPException(status_code=400, detail=str(e))
+    
 def collect_inbound_files():
     # TODO: PLACEHOLDER - Change this function to actually collect files from the SFTP inbound folders, move them to a collection directory, and produce a report. This is just a stub for now.
     """Collect files from each bank's inbound folder.

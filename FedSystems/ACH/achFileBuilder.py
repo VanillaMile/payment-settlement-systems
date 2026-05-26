@@ -327,13 +327,9 @@ class ACHFile:
             if not lines:
                 raise ValueError("ACH file is empty")
             
-            # Checks if the file contains a whole number of 10-blocks (i.e. 10, 20, 30, etc. lines) and raises an error if not
-            self.is_file_of_10_blocks(lines)
-            
             # Parse header
             try: 
                 header_line = lines[0].rstrip('\n\r')
-                self.check_line_is_94_chars(header_line)
                 self.parse_header(header_line)
             except Exception as e:
                 raise ValueError(f"Error parsing header: {e}")
@@ -343,7 +339,6 @@ class ACHFile:
             saw_file_control = False
             for line in lines[1:]:
                 line = line.rstrip('\n\r')
-                self.check_line_is_94_chars(line)
                 record_type_code = line[0]
 
                 if saw_file_control:
@@ -384,7 +379,7 @@ class ACHFile:
         except Exception as e:
             raise
 
-    def parse(self, file_path = None, check_formatting=False, lines=None):
+    def parse(self, file_path = None, check_formatting=False, lines=None, force_ack_on_format_error=False):
         """Parses an ACH file from the given file path.
         
         Use lines to bypass reading file from disk."""
@@ -414,13 +409,9 @@ class ACHFile:
             if not lines:
                 raise ValueError("ACH file is empty")
             
-            # Checks if the file contains a whole number of 10-blocks (i.e. 10, 20, 30, etc. lines) and raises an error if not
-            self.is_file_of_10_blocks(lines)
-            
             # Parse header
             try: 
                 header_line = lines[0].rstrip('\n\r')
-                self.check_line_is_94_chars(header_line)
                 self.parse_header(header_line)
             except Exception as e:
                 raise ValueError(f"Error parsing header: {e}")
@@ -430,7 +421,6 @@ class ACHFile:
             saw_file_control = False
             for line in lines[1:]:
                 line = line.rstrip('\n\r')
-                self.check_line_is_94_chars(line)
                 record_type_code = line[0]
 
                 if saw_file_control:
@@ -470,6 +460,9 @@ class ACHFile:
                     raise ValueError(f"Unknown record type code: {record_type_code}")
         except Exception as e:
             if check_formatting:
+                return build_format_error_ack(str(e))
+            if force_ack_on_format_error:
+                print(f"Formatting error: {e}. Returning ACK with error message.")
                 return build_format_error_ack(str(e))
             else:
                 raise
@@ -1104,6 +1097,10 @@ class ACHFile:
         try:
             check_immediate_destination()
             check_immediate_origin()
+            for line in self.lines:
+                if len(line) != 94:
+                    raise ValueError(f"Line length is not 94 characters: {line}")
+            self.is_file_of_10_blocks(self.lines)
             check_header()
             last_number = 2
             for batch in self.batches:
