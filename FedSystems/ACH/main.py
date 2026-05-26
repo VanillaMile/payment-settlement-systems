@@ -109,18 +109,18 @@ ach.add_middleware(
 async def root():
     return {"message": "FastAPI ACH app running"}
 
-@ach.get("/health")
+@ach.get("/health", tags=["Control Panel - http://localhost:3310/"])
 async def health():
     return {"status": "ok",
             "frb_routing_number": FRB_ROUTING_NUMBER,
             "frb_legal_name": FRB_LEGAL_NAME,
             "cors_allowed_origins": allow_origins} # TODO: Remove later
 
-@ach.get("/env")
+@ach.get("/env", tags = ["Testing"])
 async def env():
     return {"DATABASE_URL": os.environ.get("DATABASE_URL")}
 
-@ach.get("/api/sftp-users")
+@ach.get("/api/sftp-users", tags=["Control Panel - http://localhost:3310/"])
 async def sftp_users():
     list_of_users = []
     sftp_container = os.environ.get("SFTP_CONTAINER_NAME", "fedsystems-sftp")
@@ -173,7 +173,7 @@ async def sftp_users():
 
     return {"sftp_users": list_of_users}
 
-@ach.get("/api/ach-banks")
+@ach.get("/api/ach-banks", tags=["Control Panel - http://localhost:3310/"])
 def ach_banks():
     """Return list of known banks with ACH participation status.
 
@@ -225,7 +225,7 @@ def ach_banks():
 
     return {"banks": banks}
 
-@ach.post("/api/add-ach-bank")
+@ach.post("/api/add-ach-bank", tags=["Control Panel - http://localhost:3310/"])
 async def add_ach_bank(bank_data: AddAchBankRequest):
     """Add a new ACH bank to the system.
 
@@ -326,7 +326,7 @@ async def add_ach_bank(bank_data: AddAchBankRequest):
         logger.exception("Failed to add/update ACH bank: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
     
-@ach.get("/api/current-balance")
+@ach.get("/api/current-balance", tags=["Control Panel - http://localhost:3310/"])
 async def current_balance(master_account_rtn: str):
     """Get the precise current balance for a master account RTN.
 
@@ -389,7 +389,7 @@ async def current_balance(master_account_rtn: str):
         logger.exception("Failed to calculate current balance: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
     
-@ach.post("/api/funds-transfer")
+@ach.post("/api/funds-transfer", tags=["Control Panel - http://localhost:3310/"])
 async def funds_transfer(transfer_data: FundsTransferRequest):
     """Create transfer ledger entries and update running balances.
 
@@ -760,7 +760,7 @@ class JsonToAchRequest(BaseModel):
         }
 
 
-@ach.post("/json-to-ach")
+@ach.post("/json-to-ach", tags=["Helpers, banks can use this to generate/convert/validate ACH files"])
 async def json_to_ach_helper(data: JsonToAchRequest, bank_rtn: Optional[str] = ""):
     """Convert JSON ACH file description to NACHA format string.
 
