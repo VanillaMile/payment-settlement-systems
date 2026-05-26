@@ -37,6 +37,7 @@
             "trace_number": "040104010000001",
             "addenda": [
               {
+                "addenda_type_code": "05",
                 "payment_related_information": "Invoice INV-1001 for leek purchase"
               }
             ]
@@ -49,7 +50,12 @@
             "individual_id_number": "INV-1002",
             "individual_name": "Leek Store B",
             "trace_number": "040104010000002",
-            "addenda": []
+            "addenda": [
+              {
+                "addenda_type_code": "05",
+                "payment_related_information": "Invoice INV-1002 for leek purchase"
+              }
+            ]
           },
           {
             "transaction_code": "27",

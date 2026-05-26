@@ -621,6 +621,7 @@ async def funds_transfer(transfer_data: FundsTransferRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 class JsonToAchAddenda(BaseModel):
+    addenda_type_code: Optional[str] = Field(None, description="Addenda type code, for example 05 for payment related information.")
     payment_related_information: str = Field(
         ..., description="Free-form addenda text, truncated to 80 characters if needed."
     )
@@ -685,7 +686,7 @@ class JsonToAchRequest(BaseModel):
                             "immediate_destination": "090000515",
                             "immediate_origin": "040104018",
                             "immediate_destination_name": "FRB Tungsten",
-                            "immediate_origin_name": "Baguette store"
+                            "immediate_origin_name": "Baguette bank"
                         },
                         "batches": [
                             {
