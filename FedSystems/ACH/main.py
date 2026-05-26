@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException, Response, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import os
@@ -797,6 +797,27 @@ async def json_to_ach_helper(data: JsonToAchRequest, bank_rtn: Optional[str] = "
         )
     except Exception as e:
         logger.exception("Failed to convert JSON to ACH: %s", e)
+        raise HTTPException(status_code=400, detail=str(e))
+    
+def convertFileToLines(file_content: str):
+    """Convert File content to list of lines, handling different newline formats."""
+    return file_content.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+
+@ach.post("/ach-to-json", tags=["Helpers, banks can use this to generate/convert/validate ACH files"])
+async def ach_to_json_helper(file: UploadFile):
+    """Convert an uploaded ACH file to JSON format.
+
+    # **This endpoint does not validate the file!**
+    """
+    try:
+        achFile = ACHFile()
+        content = await file.read()
+        lines = convertFileToLines(content.decode("utf-8", errors="replace"))
+        achFile.parse("", lines = lines)
+        ach_json = achFileToJson(achFile)
+        return ach_json
+    except Exception as e:
+        logger.exception("Failed to convert ACH to JSON: %s", e)
         raise HTTPException(status_code=400, detail=str(e))
 
 def collect_inbound_files():

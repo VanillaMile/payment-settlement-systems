@@ -384,8 +384,10 @@ class ACHFile:
         except Exception as e:
             raise
 
-    def parse(self, file_path, check_formatting=False):
-        """Parses an ACH file from the given file path."""
+    def parse(self, file_path = None, check_formatting=False, lines=None):
+        """Parses an ACH file from the given file path.
+        
+        Use lines to bypass reading file from disk."""
 
         def build_header_line():
             file_id_modifier = self.header.get('file_id_modifier') or ''
@@ -397,13 +399,14 @@ class ACHFile:
                 f"E,F,0,9999,{message}",
             ])
 
-        if not os.path.isabs(file_path):
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            file_path = os.path.join(script_dir, file_path)
-        
-        with open(file_path, 'r') as f:
-            lines = f.readlines()
-        self.file_name = os.path.basename(file_path)
+        if lines is None:
+            if not os.path.isabs(file_path):
+                script_dir = os.path.dirname(os.path.abspath(__file__))
+                file_path = os.path.join(script_dir, file_path)
+            
+            with open(file_path, 'r') as f:
+                lines = f.readlines()
+        self.file_name = os.path.basename(file_path) if file_path else f"ACHFile_{datetime.now().strftime('%Y%m%d%H%M%S')}"
         self.lines = lines
 
         self.block_count = len(lines) // 10
