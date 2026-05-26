@@ -67,6 +67,79 @@ def extract_rtp_data(xml_string: str):
         "creditor_account": creditor_account_node.text if creditor_account_node is not None else None
     }
 
+# --- FUNKCJA WEWNĘTRZNA ROZWIĄZUJĄCA ZATORY (GRIDLOCK RESOLUTION) ---
+# Uwaga: Usunięto dekorator @router.post, to teraz funkcja pomocnicza
+def resolve_gridlock(db: Session):
+    queue_items = db.query(GridlockQueue).all()
+    if not queue_items:
+        return
+
+    net_positions = {}
+    for item in queue_items:
+        try:
+            data = extract_rtp_data(item.xml_payload)
+            amount = data["amount"]
+            s_code = data["sender_code"]
+            r_code = data["receiver_code"]
+            net_positions[s_code] = net_positions.get(s_code, 0.0) - amount
+            net_positions[r_code] = net_positions.get(r_code, 0.0) + amount
+        except Exception:
+            continue
+
+    can_resolve = True
+    for bank_code, net_amount in net_positions.items():
+        bank = db.query(Bank).filter(Bank.bank_code == bank_code).first()
+        if bank and (bank.balance + net_amount) < -bank.debt_limit:
+            can_resolve = False
+            break
+
+    if can_resolve:
+        session_id = f"SES-{datetime.now(timezone.utc).strftime('%H%M%S')}"
+        
+        for bank_code, net_amount in net_positions.items():
+            bank = db.query(Bank).filter(Bank.bank_code == bank_code).first()
+            if bank:
+                bank.balance += net_amount
+                if bank.balance >= -bank.debt_limit:
+                    bank.limit_exceeded_at = None
+                    bank.status = "ACTIVE"
+                    
+                db.add(NettingReport(
+                    session_id=session_id,
+                    bank_code=bank_code,
+                    net_position=net_amount,
+                    status="SETTLED"
+                ))
+                    
+        for item in queue_items:
+            try:
+                data = extract_rtp_data(item.xml_payload)
+                amount = data["amount"]
+                s_code = data["sender_code"]
+                r_code = data["receiver_code"]
+                e2e_id = data["end_to_end_id"]
+                
+                # Zabezpieczenie przed 500 Internal Server Error (Duplikaty)
+                existing_tx = db.query(Transaction).filter(Transaction.message_id == e2e_id).first()
+                if not existing_tx:
+                    db.add(Transaction(
+                        sender_code=s_code, 
+                        receiver_code=r_code, 
+                        amount=amount, 
+                        status="RESOLVED", 
+                        message_id=e2e_id,
+                        debtor_name=data.get("debtor_name"),
+                        debtor_account=data.get("debtor_account"),
+                        creditor_name=data.get("creditor_name"),
+                        creditor_account=data.get("creditor_account")
+                    ))
+            except Exception:
+                pass
+            # Usuwamy z kolejki niezależnie od wszystkiego
+            db.delete(item)
+
+        db.commit()
+
 # --- ZABEZPIECZENIE TOŻSAMOŚCI ---
 def get_current_bank(x_api_key: str = Header(...), db: Session = Depends(get_db)):
     """Sprawdza, czy bank posiada ważny klucz API w nagłówku zapytania"""
@@ -109,7 +182,7 @@ def register_bank(bank_data: BankCreate, db: Session = Depends(get_db)):
     return {
         "message": f"Bank {bank_data.bank_code} registered successfully.",
         "api_key": new_api_key,
-        "instructions": "Przekaż ten klucz API grupie."
+        "instructions": "use the API key for transfer requests"
     }
 
 @router.post("/banks/{bank_code}/reset-key", tags=["Bank"])
@@ -217,7 +290,7 @@ async def process_transfer(
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid ISO 20022 XML format.")
 
-    if currency not in ["PLN", "USD"]:
+    if currency not in ["USD"]:
         raise HTTPException(status_code=400, detail=f"Currency {currency} not supported.")
 
     if current_bank.bank_code != sender_code:
@@ -263,14 +336,17 @@ async def process_transfer(
         db.commit()
         return {"status": "ACCEPTED", "message": "Settlement completed."}
     else:
-        # Brak środków (AM04)
+        # Brak środków (AM04) - Dodajemy do kolejki
         db.add(GridlockQueue(xml_payload=xml_data))
         
         if current_bank.limit_exceeded_at is None:
             current_bank.limit_exceeded_at = datetime.now(timezone.utc)
         db.commit()
         
+        # --- ZMIANA: Wywołujemy gridlock resolution od razu po dodaniu do kolejki ---
         resolve_gridlock(db)
+        
+        # Sprawdzamy rozmiar kolejki po ewentualnym rozliczeniu zatoru
         queue_size = db.query(GridlockQueue).count()
         
         return {
@@ -279,77 +355,6 @@ async def process_transfer(
             "message": ISO_ERROR_CODES["AM04"], 
             "queue_size": queue_size
         }
-
-@router.post("/gridlock-resolve", tags=["Core System"])
-def resolve_gridlock(db: Session = Depends(get_db)):
-    queue_items = db.query(GridlockQueue).all()
-    if not queue_items:
-        return {"status": "EMPTY_QUEUE", "message": "No pending orders."}
-
-    net_positions = {}
-    for item in queue_items:
-        try:
-            data = extract_rtp_data(item.xml_payload)
-            amount = data["amount"]
-            s_code = data["sender_code"]
-            r_code = data["receiver_code"]
-            net_positions[s_code] = net_positions.get(s_code, 0.0) - amount
-            net_positions[r_code] = net_positions.get(r_code, 0.0) + amount
-        except Exception:
-            continue
-
-    can_resolve = True
-    for bank_code, net_amount in net_positions.items():
-        bank = db.query(Bank).filter(Bank.bank_code == bank_code).first()
-        if bank and (bank.balance + net_amount) < -bank.debt_limit:
-            can_resolve = False
-            break
-
-    if can_resolve:
-        session_id = f"SES-{datetime.now(timezone.utc).strftime('%H%M%S')}"
-        
-        for bank_code, net_amount in net_positions.items():
-            bank = db.query(Bank).filter(Bank.bank_code == bank_code).first()
-            if bank:
-                bank.balance += net_amount
-                if bank.balance >= -bank.debt_limit:
-                    bank.limit_exceeded_at = None
-                    bank.status = "ACTIVE"
-                    
-                db.add(NettingReport(
-                    session_id=session_id,
-                    bank_code=bank_code,
-                    net_position=net_amount,
-                    status="SETTLED"
-                ))
-                    
-        for item in queue_items:
-            try:
-                data = extract_rtp_data(item.xml_payload)
-                amount = data["amount"]
-                s_code = data["sender_code"]
-                r_code = data["receiver_code"]
-                e2e_id = data["end_to_end_id"]
-                
-                db.add(Transaction(
-                    sender_code=s_code, 
-                    receiver_code=r_code, 
-                    amount=amount, 
-                    status="RESOLVED", 
-                    message_id=e2e_id,
-                    debtor_name=data.get("debtor_name"),
-                    debtor_account=data.get("debtor_account"),
-                    creditor_name=data.get("creditor_name"),
-                    creditor_account=data.get("creditor_account")
-                ))
-            except Exception:
-                pass
-            db.delete(item)
-
-        db.commit()
-        return {"status": "SUCCESS", "message": f"Settled {len(queue_items)} queued transfers."}
-    
-    return {"status": "FAILED", "message": "Gridlock persists."}
 
 @router.post("/central-bank/inject", tags=["Bank"])
 def inject_liquidity(injection: LiquidityInjection, db: Session = Depends(get_db)):
