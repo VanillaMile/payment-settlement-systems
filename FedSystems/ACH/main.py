@@ -28,6 +28,14 @@ FRB_LEGAL_NAME = os.environ.get("FRB_LEGAL_NAME", "Federal Reserve Bank")
 
 logger.info("FRB Configuration: RTN=%s, Legal Name=%s", FRB_ROUTING_NUMBER, FRB_LEGAL_NAME)
 
+collected_dir = "collected"
+if not os.path.exists(collected_dir):
+    os.makedirs(collected_dir)
+
+archive_dir = "archive"
+if not os.path.exists(archive_dir):
+    os.makedirs(archive_dir)
+
 class AddAchBankRequest(BaseModel):
     primary_routing_transit_number: str
     legal_name: str
@@ -821,7 +829,7 @@ async def ach_to_json_helper(file: UploadFile):
         raise HTTPException(status_code=400, detail=str(e))
 
 @ach.post("/validate-ach", tags=["Helpers, banks can use this to generate/convert/validate ACH files"])
-async def validate_ach_helper(file: UploadFile, immediate_destination_rtn: Optional[str] = None, immediate_origin_rtn: Optional[str] = None):
+async def validate_ach(file: UploadFile, immediate_destination_rtn: Optional[str] = None, immediate_origin_rtn: Optional[str] = None):
     """Validate an uploaded ACH file.
 
     - immediate_destination_rtn is optional, if provided it will check if the file's immediate destination matches it.
@@ -846,18 +854,27 @@ async def validate_ach_helper(file: UploadFile, immediate_destination_rtn: Optio
         logger.exception("Failed to validate ACH file: %s", e)
         raise HTTPException(status_code=400, detail=str(e))
     
+@ach.get("/collect", tags=["Session, Available in control panel -> session manager - http://localhost:3310/"])
 def collect_inbound_files():
-    # TODO: PLACEHOLDER - Change this function to actually collect files from the SFTP inbound folders, move them to a collection directory, and produce a report. This is just a stub for now.
     """Collect files from each bank's inbound folder.
 
-    - Scans the mounted SFTP data directory (default `/app/sftp_data`).
-    - Moves files from `<sftp_data>/<bank>/inbound/` to a timestamped
-      collection directory `/app/collected/<timestamp>/<bank>/`.
-    - Produces a JSON report `/app/collected/<timestamp>/report.json` with
-      entries: bank, filename, size, and file content (text when possible,
-      otherwise base64).
+    # Runs automatically every 15 minutes, unless set to manual(default) mode.
 
-    Returns the report as a Python dict.
+    # If your .ach is being skipped, check if you're registered as an ACH participant and that your bank details include the correct `sftp_username` matching your SFTP user. You can check your registration status and details in the "ACH Banks" section of the control panel.
+
+    # Available in control panel -> session manager - http://localhost:3310/ can be run from here too. Click the "Try it out" button and then "Execute" to run the collection process.
+
+    # What to do as bank:
+
+    - Create .ach file
+    - Place it into your bank's inbound folder (for example `sftp_data/BANK0/inbound/`)
+    - Run this endpoint to collect files.
+    - You should find .ack file in your bank's outbound folder (for example `sftp_data/BANK0/outbound/`) with validation results. If successful, your .ach will be processed in next session.
+
+    - Scans the mounted SFTP data directory (default `/app/sftp_data`).
+    - Validates the file, sends .ack to the bank's outbound folder.
+        - If validation fails, sends an .ack file with error details and deletes failed .ach file.
+        - If validation succeeds, moves files from `<sftp_data>/<bank>/inbound/` to a directory as `collected/{bank_rtn}_<timestamp>.ach`, deletes the original file from the inbound folder and sends .ack file to the bank's outbound folder.
     """
 
     sftp_root = os.environ.get("SFTP_DATA_DIR", "/app/sftp_data")
@@ -867,12 +884,87 @@ def collect_inbound_files():
         raise RuntimeError(f"SFTP data directory not found: {sftp_root}")
 
     timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-    run_dir = os.path.join(collected_root, timestamp)
+    run_dir = collected_root
     os.makedirs(run_dir, exist_ok=True)
+
+    db_url = os.environ.get("DATABASE_URL")
+
+    def lookup_bank_rtn(sftp_username):
+        if not db_url:
+            return None
+
+        conn = None
+        cur = None
+        try:
+            conn = psycopg2.connect(db_url, connect_timeout=5)
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute(
+                """
+                SELECT primary_routing_transit_number
+                FROM bank_details
+                WHERE sftp_username = %s
+                """,
+                (sftp_username,),
+            )
+            row = cur.fetchone()
+            if not row:
+                return None
+            return row.get("primary_routing_transit_number")
+        except Exception:
+            logger.exception("Failed to look up bank RTN for sftp user %s", sftp_username)
+            return None
+        finally:
+            if cur is not None:
+                cur.close()
+            if conn is not None:
+                conn.close()
+
+    def check_if_restricted(rtn):
+        if not db_url:
+            return False
+
+        conn = None
+        cur = None
+        try:
+            conn = psycopg2.connect(db_url, connect_timeout=5)
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute(
+                """
+                SELECT restricted
+                FROM ach_participants
+                WHERE primary_routing_transit_number = %s
+                """,
+                (rtn,),
+            )
+            row = cur.fetchone()
+            if not row:
+                return False
+            return row.get("restricted", False)
+        except Exception:
+            logger.exception("Failed to check if bank RTN %s is restricted", rtn)
+            return False
+
+    def validate_ach_bytes(file_bytes, filename=None, immediate_origin_rtn=None):
+        ach_file = ACHFile()
+        lines = convertFileToLines(file_bytes.decode("utf-8", errors="replace"))
+        ach_file.parse(file_path=filename, lines=lines, force_ack_on_format_error=True)
+        ack_text = ach_file.validate(is_parsed=True, immediate_origin=immediate_origin_rtn)
+        ack_lines = ack_text.splitlines()
+        is_valid = len(ack_lines) > 1 and ack_lines[1].startswith("R,")
+        return ack_text, is_valid
+
+    def write_ack_file(outbound_dir, source_filename, ack_text):
+        os.makedirs(outbound_dir, exist_ok=True)
+        ack_basename = os.path.splitext(source_filename or "validation")[0] + ".ack"
+        ack_path = os.path.join(outbound_dir, ack_basename)
+        with open(ack_path, "w", encoding="utf-8", newline="\n") as ack_file:
+            ack_file.write(ack_text)
+        return ack_path
 
     report = {
         "run": timestamp,
         "collected_at": datetime.utcnow().isoformat() + "Z",
+        "info": "Make sure your bank is registred as an ACH participant. Unregistered banks will be skipped.",
         "entries": []
     }
 
@@ -882,79 +974,78 @@ def collect_inbound_files():
         if not os.path.isdir(bank_dir):
             continue
 
+        bank_rtn = lookup_bank_rtn(bank)
+        if not bank_rtn:
+            logger.warning("Skipping bank folder %s because no bank RTN was found for sftp_username=%s", bank_dir, bank)
+            continue
+
         inbound_dir = os.path.join(bank_dir, "inbound")
         if not os.path.isdir(inbound_dir):
             continue
 
-        target_bank_dir = os.path.join(run_dir, bank)
-        os.makedirs(target_bank_dir, exist_ok=True)
+        outbound_dir = os.path.join(bank_dir, "outbound")
+        os.makedirs(outbound_dir, exist_ok=True)
 
         for entry in sorted(os.listdir(inbound_dir)):
             src_path = os.path.join(inbound_dir, entry)
             if not os.path.isfile(src_path):
                 continue
 
-            target_path = os.path.join(target_bank_dir, entry)
-            # Move the file into collected folder
-            shutil.move(src_path, target_path)
-
-            # Read file content safely
-            try:
-                with open(target_path, "rb") as f:
-                    data = f.read()
-                # Try decode as UTF-8 text
-                try:
-                    text = data.decode("utf-8")
-                    content = {"type": "text", "value": text}
-                except Exception:
-                    b64 = base64.b64encode(data).decode("ascii")
-                    content = {"type": "base64", "value": b64}
-                size = os.path.getsize(target_path)
-
+            is_restricted = check_if_restricted(bank_rtn)
+            if is_restricted == "restricted":
+                ack_file = write_ack_file(os.path.join(bank_dir, "outbound"), entry, f"Bank with RTN {bank_rtn} is currently restricted and cannot send ACH files. Please contact support for more information.")
                 report["entries"].append({
-                    "bank": bank,
-                    "filename": entry,
-                    "size": size,
-                    "content": content
+                    "bank_rtn": bank_rtn,
+                    "sftp_username": bank,
+                    "status": "restricted",
+                    "ack_path": ack_file,
                 })
+                os.remove(src_path)
+                continue
+
+            try:
+                with open(src_path, "rb") as f:
+                    file_bytes = f.read()
+
+                ack_text, is_valid = validate_ach_bytes(file_bytes, filename=entry, immediate_origin_rtn=bank_rtn)
+                ack_path = write_ack_file(outbound_dir, entry, ack_text)
+
+                if is_valid:
+                    target_filename = f"{bank_rtn}_{os.path.basename(entry)}"
+                    target_path = os.path.join(run_dir, target_filename)
+                    # Overwrite existing collected file if present.
+                    if os.path.exists(target_path):
+                        try:
+                            os.remove(target_path)
+                        except Exception:
+                            logger.exception("Failed to remove existing target file %s", target_path)
+                    shutil.move(src_path, target_path)
+                    report["entries"].append({
+                        "bank": bank_rtn,
+                        "sftp_username": bank,
+                        "filename": entry,
+                        "status": "collected",
+                        "size": os.path.getsize(target_path),
+                        "collected_path": target_path,
+                        "ack_path": ack_path,
+                    })
+                else:
+                    os.remove(src_path)
+                    report["entries"].append({
+                        "bank_rtn": bank_rtn,
+                        "sftp_username": bank,
+                        "filename": entry,
+                        "status": "rejected",
+                        "ack_path": ack_path,
+                    })
             except Exception as e:
-                logging.exception("Failed processing %s", target_path)
+                logging.exception("Failed processing %s", src_path)
                 report["entries"].append({
-                    "bank": bank,
+                    "bank_rtn": bank_rtn,
+                    "sftp_username": bank,
                     "filename": entry,
+                    "status": "error",
                     "error": str(e)
                 })
 
-    # Write report to disk
-    report_path = os.path.join(run_dir, "report.json")
-    with open(report_path, "w", encoding="utf-8") as rf:
-        json.dump(report, rf, indent=2, ensure_ascii=False)
-
-    # For testing: write a copy of the report into each bank's outbound folder
-    for bank in sorted(os.listdir(sftp_root)):
-        bank_dir = os.path.join(sftp_root, bank)
-        if not os.path.isdir(bank_dir):
-            continue
-        outbound_dir = os.path.join(bank_dir, "outbound")
-        try:
-            os.makedirs(outbound_dir, exist_ok=True)
-            out_report_path = os.path.join(outbound_dir, f"report_{timestamp}.json")
-            with open(out_report_path, "w", encoding="utf-8") as of:
-                json.dump(report, of, indent=2, ensure_ascii=False)
-            logger.debug("Wrote report to %s", out_report_path)
-        except Exception:
-            logger.exception("Failed writing report to outbound for %s", bank)
-
     return report
-
-
-@ach.post("/collect")
-async def collect_endpoint():
-    try:
-        report = collect_inbound_files()
-        return report
-    except Exception as e:
-        logger.exception("Collect failed")
-        raise HTTPException(status_code=500, detail=str(e))
-
-    
