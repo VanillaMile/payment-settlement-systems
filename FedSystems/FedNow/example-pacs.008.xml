@@ -3,6 +3,7 @@
   <FIToFICstmrCdtTrf>
     <GrpHdr>
       <MsgId>MSG-20260526-0001</MsgId>
+      <CreDtTm>2026-05-27T12:00:00</CreDtTm>
     </GrpHdr>
     <CdtTrfTxInf>
       <PmtId>
@@ -13,17 +14,19 @@
       <DbtrAgt>
         <FinInstnId>
           <ClrSysMmbId>
-            <MmbId>BANKA</MmbId>
+            <nm>Baguette bank</nm>
+            <MmbId>040104018</MmbId> <!-- Bank's RTN -->
           </ClrSysMmbId>
         </FinInstnId>
       </DbtrAgt>
       <Dbtr>
-        <Nm>Jan Kowalski</Nm>
+        <Nm>Jan Kowalski</Nm> <!-- Debtor's name -->
       </Dbtr>
       <DbtrAcct>
         <Id>
           <Othr>
-            <Id>PL1234567890</Id>
+            <Id>123456789012</Id>                <!-- customer account number -->
+            <SchmeNm><Prtry>US_ACCT</Prtry></SchmeNm>
           </Othr>
         </Id>
       </DbtrAcct>
@@ -31,17 +34,19 @@
       <CdtrAgt>
         <FinInstnId>
           <ClrSysMmbId>
-            <MmbId>BANKB</MmbId>
+            <nm>Leek bank</nm> <!-- Cdtr's bank -->
+            <MmbId>010101012</MmbId>
           </ClrSysMmbId>
         </FinInstnId>
       </CdtrAgt>
       <Cdtr>
-        <Nm>Firma Handlowa XYZ</Nm>
+        <Nm>Firma Handlowa XYZ</Nm> <!-- Beneficiary's name -->
       </Cdtr>
       <CdtrAcct>
         <Id>
           <Othr>
-            <Id>PL0987654321</Id>
+            <Id>99988877711231230</Id>             <!-- customer account number -->
+            <SchmeNm><Prtry>US_ACCT</Prtry></SchmeNm>
           </Othr>
         </Id>
       </CdtrAcct>
