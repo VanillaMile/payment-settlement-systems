@@ -30,7 +30,9 @@ def parse_env(env_file):
                 continue
             key, value = line.split('=', 1)
             key = key.strip()
-            value = value.strip()
+            value = value.split('#', 1)[0].strip()
+            if len(value) >= 2 and ((value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'"))):
+                value = value[1:-1]
             if pattern.fullmatch(key):
                 banks[key] = value
 
