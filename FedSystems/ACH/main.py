@@ -1,6 +1,6 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import os
 from typing import Optional
 import re
@@ -13,6 +13,7 @@ from datetime import datetime
 import psycopg2
 import psycopg2.extras
 from dotenv import load_dotenv
+from achFileBuilder import *
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -26,6 +27,14 @@ FRB_ROUTING_NUMBER = os.environ.get("FRB_ROUTING_NUMBER", "090000515")
 FRB_LEGAL_NAME = os.environ.get("FRB_LEGAL_NAME", "Federal Reserve Bank")
 
 logger.info("FRB Configuration: RTN=%s, Legal Name=%s", FRB_ROUTING_NUMBER, FRB_LEGAL_NAME)
+
+collected_dir = "collected"
+if not os.path.exists(collected_dir):
+    os.makedirs(collected_dir)
+
+archive_dir = "archive"
+if not os.path.exists(archive_dir):
+    os.makedirs(archive_dir)
 
 class AddAchBankRequest(BaseModel):
     primary_routing_transit_number: str
@@ -108,18 +117,18 @@ ach.add_middleware(
 async def root():
     return {"message": "FastAPI ACH app running"}
 
-@ach.get("/health")
+@ach.get("/health", tags=["Control Panel - http://localhost:3310/"])
 async def health():
     return {"status": "ok",
             "frb_routing_number": FRB_ROUTING_NUMBER,
             "frb_legal_name": FRB_LEGAL_NAME,
             "cors_allowed_origins": allow_origins} # TODO: Remove later
 
-@ach.get("/env")
+@ach.get("/env", tags = ["Testing"])
 async def env():
     return {"DATABASE_URL": os.environ.get("DATABASE_URL")}
 
-@ach.get("/api/sftp-users")
+@ach.get("/api/sftp-users", tags=["Control Panel - http://localhost:3310/"])
 async def sftp_users():
     list_of_users = []
     sftp_container = os.environ.get("SFTP_CONTAINER_NAME", "fedsystems-sftp")
@@ -172,7 +181,7 @@ async def sftp_users():
 
     return {"sftp_users": list_of_users}
 
-@ach.get("/api/ach-banks")
+@ach.get("/api/ach-banks", tags=["Control Panel - http://localhost:3310/"])
 def ach_banks():
     """Return list of known banks with ACH participation status.
 
@@ -224,7 +233,7 @@ def ach_banks():
 
     return {"banks": banks}
 
-@ach.post("/api/add-ach-bank")
+@ach.post("/api/add-ach-bank", tags=["Control Panel - http://localhost:3310/"])
 async def add_ach_bank(bank_data: AddAchBankRequest):
     """Add a new ACH bank to the system.
 
@@ -325,7 +334,7 @@ async def add_ach_bank(bank_data: AddAchBankRequest):
         logger.exception("Failed to add/update ACH bank: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
     
-@ach.get("/api/current-balance")
+@ach.get("/api/current-balance", tags=["Control Panel - http://localhost:3310/"])
 async def current_balance(master_account_rtn: str):
     """Get the precise current balance for a master account RTN.
 
@@ -388,7 +397,7 @@ async def current_balance(master_account_rtn: str):
         logger.exception("Failed to calculate current balance: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
     
-@ach.post("/api/funds-transfer")
+@ach.post("/api/funds-transfer", tags=["Control Panel - http://localhost:3310/"])
 async def funds_transfer(transfer_data: FundsTransferRequest):
     """Create transfer ledger entries and update running balances.
 
@@ -619,18 +628,253 @@ async def funds_transfer(transfer_data: FundsTransferRequest):
         logger.exception("Failed to add funds transfer: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
+class JsonToAchAddenda(BaseModel):
+    addenda_type_code: Optional[str] = Field(None, description="Addenda type code, for example 05 for payment related information.")
+    payment_related_information: str = Field(
+        ..., description="Free-form addenda text, truncated to 80 characters if needed."
+    )
+
+
+class JsonToAchEntry(BaseModel):
+    transaction_code: str = Field(..., description="ACH transaction code.")
+    receiving_dfi_rtn: str = Field(..., description="9-digit receiving DFI routing number.")
+    dfi_account_number: str = Field(..., description="Receiver account number.")
+    amount_cents: int = Field(..., ge=0, description="Amount in cents.")
+    individual_id_number: Optional[str] = Field(None, description="Optional individual ID number.")
+    individual_name: Optional[str] = Field(None, description="Optional individual name.")
+    trace_number: Optional[str] = Field(None, description="Optional trace number; generated if omitted.")
+    addenda: Optional[list[JsonToAchAddenda]] = Field(None, description="Optional addenda records for the entry.")
+
+
+class JsonToAchBatchHeader(BaseModel):
+    company_name: str = Field(..., description="Originating company name.")
+    company_identification: str = Field(..., description="Originator/company identification.")
+    standard_entry_class_code: str = Field(..., description="SEC code, for example PPD or CCD.")
+    originating_dfi_identification: str = Field(..., description="8-digit originating DFI identification.")
+    service_class_code: Optional[str] = Field(None, description="Optional service class code; derived if omitted.")
+    company_discretionary_data: Optional[str] = Field(None, description="Optional company discretionary data.")
+    company_entry_description: Optional[str] = Field(None, description="Optional batch description.")
+    company_descriptive_date: Optional[str] = Field(None, description="Optional descriptive date; defaults to file creation date.")
+    effective_entry_date: Optional[str] = Field(None, description="Optional effective date; defaults to file creation date.")
+    settlement_date: Optional[str] = Field(None, description="Optional settlement date placeholder.")
+    originator_status_code: Optional[str] = Field(None, description="Optional originator status code; defaults to 1.")
+    batch_number: Optional[str] = Field(None, description="Optional batch number; generated if omitted.")
+
+
+class JsonToAchBatch(BaseModel):
+    header: JsonToAchBatchHeader
+    entries: list[JsonToAchEntry]
+
+
+class JsonToAchFileHeader(BaseModel):
+    immediate_destination: str = Field(..., description="Destination routing number.")
+    immediate_origin: str = Field(..., description="Origin routing number.")
+    immediate_destination_name: str = Field(..., description="Destination name.")
+    immediate_origin_name: str = Field(..., description="Origin name.")
+    file_creation_date: Optional[str] = Field(None, description="Optional YYMMDD file creation date; defaults to today.")
+    file_creation_time: Optional[str] = Field(None, description="Optional HHMM file creation time; defaults to now.")
+    file_id_modifier: Optional[str] = Field(None, description="Optional file ID modifier; defaults to A.")
+    reference_code: Optional[str] = Field(None, description="Optional reference code.")
+
+
+class JsonToAchFileData(BaseModel):
+    header: JsonToAchFileHeader
+    batches: list[JsonToAchBatch]
+
+
+class JsonToAchRequest(BaseModel):
+    data: JsonToAchFileData
+
+    class Config:
+        json_schema_extra = {
+            "examples": [
+                {
+                    "data": {
+                        "header": {
+                            "immediate_destination": "090000515",
+                            "immediate_origin": "040104018",
+                            "immediate_destination_name": "FRB Tungsten",
+                            "immediate_origin_name": "Baguette bank"
+                        },
+                        "batches": [
+                            {
+                                "header": {
+                                    "company_name": "Baguette store",
+                                    "company_identification": "1313131310",
+                                    "standard_entry_class_code": "PPD",
+                                    "originating_dfi_identification": "04010401"
+                                },
+                                "entries": [
+                                    {
+                                        "transaction_code": "22",
+                                        "receiving_dfi_rtn": "010101012",
+                                        "dfi_account_number": "123456789",
+                                        "amount_cents": 100,
+                                        "individual_name": "Leek store"
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                },
+                {
+                    "data": {
+                        "header": {
+                            "immediate_destination": "090000515",
+                            "immediate_origin": "040104018",
+                            "immediate_destination_name": "FRB Tungsten",
+                            "immediate_origin_name": "Baguette store",
+                            "file_creation_date": "260525",
+                            "file_creation_time": "1200",
+                            "file_id_modifier": "A",
+                            "reference_code": ""
+                        },
+                        "batches": [
+                            {
+                                "header": {
+                                    "service_class_code": "200",
+                                    "company_name": "Baguette store",
+                                    "company_discretionary_data": "",
+                                    "company_identification": "1313131310",
+                                    "standard_entry_class_code": "PPD",
+                                    "company_entry_description": "LEEK PAY",
+                                    "company_descriptive_date": "260525",
+                                    "effective_entry_date": "260525",
+                                    "settlement_date": "",
+                                    "originator_status_code": "1",
+                                    "originating_dfi_identification": "04010401",
+                                    "batch_number": "0000001"
+                                },
+                                "entries": [
+                                    {
+                                        "transaction_code": "22",
+                                        "receiving_dfi_rtn": "010101012",
+                                        "dfi_account_number": "123456789",
+                                        "amount_cents": 100,
+                                        "individual_id_number": "",
+                                        "individual_name": "Leek store",
+                                        "trace_number": "040104010000001",
+                                        "addenda": [
+                                            {
+                                                "payment_related_information": "31 tons of leek purchase!"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+
+
+@ach.post("/json-to-ach", tags=["Helpers, banks can use this to generate/convert/validate ACH files"])
+async def json_to_ach_helper(data: JsonToAchRequest, bank_rtn: Optional[str] = ""):
+    """Convert JSON ACH file description to NACHA format string.
+
+    # **This endpoint does not validate the file!**
+
+    ## Too long values will be truncated.
+     
+    It will return it how you send it, even if it's wrong or incomplete.
+
+    In the example you can see the minimal required data to produce a valid ACH file.
+
+    ## Check out schemas `JsonToAchFileData` to see all the optional fields.
+
+    Inside `FedSystems/ACH` you can find `sample_full_request.json` with fully filled out example data covering all fields.
+    """
+    try:
+        ach_result = jsonToAchFile(data.data.model_dump(exclude_none=True))
+
+        # Support either an ACHFile-like object, a list of NACHA lines, or plain text.
+        if hasattr(ach_result, "build_ach") and callable(ach_result.build_ach):
+            ach_lines = ach_result.build_ach()
+            ach_content = "\n".join(ach_lines) if isinstance(ach_lines, list) else str(ach_lines)
+        elif isinstance(ach_result, list):
+            ach_content = "\n".join(str(line) for line in ach_result)
+        else:
+            ach_content = str(ach_result)
+
+        filename = f"{bank_rtn}_{datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')}.ach"
+        return Response(
+            content=ach_content,
+            media_type="application/octet-stream",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except Exception as e:
+        logger.exception("Failed to convert JSON to ACH: %s", e)
+        raise HTTPException(status_code=400, detail=str(e))
+    
+def convertFileToLines(file_content: str):
+    """Convert File content to list of lines, handling different newline formats."""
+    return file_content.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+
+@ach.post("/ach-to-json", tags=["Helpers, banks can use this to generate/convert/validate ACH files"])
+async def ach_to_json_helper(file: UploadFile):
+    """Convert an uploaded ACH file to JSON format.
+
+    # **This endpoint does not validate the file!**
+    """
+    try:
+        achFile = ACHFile()
+        content = await file.read()
+        lines = convertFileToLines(content.decode("utf-8", errors="replace"))
+        achFile.parse("", lines = lines)
+        ach_json = achFileToJson(achFile)
+        return ach_json
+    except Exception as e:
+        logger.exception("Failed to convert ACH to JSON: %s", e)
+        raise HTTPException(status_code=400, detail=str(e))
+
+@ach.post("/validate-ach", tags=["Helpers, banks can use this to generate/convert/validate ACH files"])
+async def validate_ach(file: UploadFile, immediate_destination_rtn: Optional[str] = None, immediate_origin_rtn: Optional[str] = None):
+    """Validate an uploaded ACH file.
+
+    - immediate_destination_rtn is optional, if provided it will check if the file's immediate destination matches it.
+    - immediate_origin_rtn is optional, if provided it will check if the file's immediate origin matches it.
+
+    Returns .ack file.
+    """
+    try:
+        achFile = ACHFile()
+        content = await file.read()
+        lines = convertFileToLines(content.decode("utf-8", errors="replace"))
+        filename = file.filename or None
+        achFile.parse(file_path=filename, lines = lines, force_ack_on_format_error=True)
+        validation_report = achFile.validate(is_parsed=True, immediate_destination=immediate_destination_rtn, immediate_origin=immediate_origin_rtn)
+        ack_filename = f"{os.path.splitext(file.filename or 'validation')[0]}.ack"
+        return Response(
+            content=validation_report,
+            media_type="text/plain; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{ack_filename}"'},
+        )
+    except Exception as e:
+        logger.exception("Failed to validate ACH file: %s", e)
+        raise HTTPException(status_code=400, detail=str(e))
+    
+@ach.get("/collect", tags=["Session, Available in control panel -> session manager - http://localhost:3310/"])
 def collect_inbound_files():
-    # TODO: PLACEHOLDER - Change this function to actually collect files from the SFTP inbound folders, move them to a collection directory, and produce a report. This is just a stub for now.
     """Collect files from each bank's inbound folder.
 
-    - Scans the mounted SFTP data directory (default `/app/sftp_data`).
-    - Moves files from `<sftp_data>/<bank>/inbound/` to a timestamped
-      collection directory `/app/collected/<timestamp>/<bank>/`.
-    - Produces a JSON report `/app/collected/<timestamp>/report.json` with
-      entries: bank, filename, size, and file content (text when possible,
-      otherwise base64).
+    # Runs automatically every 15 minutes, unless set to manual(default) mode.
 
-    Returns the report as a Python dict.
+    # If your .ach is being skipped, check if you're registered as an ACH participant and that your bank details include the correct `sftp_username` matching your SFTP user. You can check your registration status and details in the "ACH Banks" section of the control panel.
+
+    # Available in control panel -> session manager - http://localhost:3310/ can be run from here too. Click the "Try it out" button and then "Execute" to run the collection process.
+
+    # What to do as bank:
+
+    - Create .ach file
+    - Place it into your bank's inbound folder (for example `sftp_data/BANK0/inbound/`)
+    - Run this endpoint to collect files.
+    - You should find .ack file in your bank's outbound folder (for example `sftp_data/BANK0/outbound/`) with validation results. If successful, your .ach will be processed in next session.
+
+    - Scans the mounted SFTP data directory (default `/app/sftp_data`).
+    - Validates the file, sends .ack to the bank's outbound folder.
+        - If validation fails, sends an .ack file with error details and deletes failed .ach file.
+        - If validation succeeds, moves files from `<sftp_data>/<bank>/inbound/` to a directory as `collected/{bank_rtn}_<timestamp>.ach`, deletes the original file from the inbound folder and sends .ack file to the bank's outbound folder.
     """
 
     sftp_root = os.environ.get("SFTP_DATA_DIR", "/app/sftp_data")
@@ -640,12 +884,115 @@ def collect_inbound_files():
         raise RuntimeError(f"SFTP data directory not found: {sftp_root}")
 
     timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-    run_dir = os.path.join(collected_root, timestamp)
+    run_dir = collected_root
     os.makedirs(run_dir, exist_ok=True)
+
+    db_url = os.environ.get("DATABASE_URL")
+
+    def get_ach_participants():
+        """Gets a list of participating DFIs RTNs from the database."""
+        if not db_url:
+            return []
+
+        conn = None
+        cur = None
+        try:
+            conn = psycopg2.connect(db_url, connect_timeout=5)
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute(
+                """
+                SELECT primary_routing_transit_number
+                FROM ach_participants
+                WHERE restricted not in (1, 'restricted') 
+                """
+            )
+            rows = cur.fetchall()
+            return [row.get("primary_routing_transit_number") for row in rows]
+        except Exception:
+            logger.exception("Failed to get ACH participants")
+            return []
+        finally:
+            if cur is not None:
+                cur.close()
+            if conn is not None:
+                conn.close()
+
+    def lookup_bank_rtn(sftp_username):
+        if not db_url:
+            return None
+
+        conn = None
+        cur = None
+        try:
+            conn = psycopg2.connect(db_url, connect_timeout=5)
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute(
+                """
+                SELECT primary_routing_transit_number
+                FROM bank_details
+                WHERE sftp_username = %s
+                """,
+                (sftp_username,),
+            )
+            row = cur.fetchone()
+            if not row:
+                return None
+            return row.get("primary_routing_transit_number")
+        except Exception:
+            logger.exception("Failed to look up bank RTN for sftp user %s", sftp_username)
+            return None
+        finally:
+            if cur is not None:
+                cur.close()
+            if conn is not None:
+                conn.close()
+
+    def check_if_restricted(rtn):
+        if not db_url:
+            return False
+
+        conn = None
+        cur = None
+        try:
+            conn = psycopg2.connect(db_url, connect_timeout=5)
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute(
+                """
+                SELECT restricted
+                FROM ach_participants
+                WHERE primary_routing_transit_number = %s
+                """,
+                (rtn,),
+            )
+            row = cur.fetchone()
+            if not row:
+                return False
+            return row.get("restricted", False)
+        except Exception:
+            logger.exception("Failed to check if bank RTN %s is restricted", rtn)
+            return False
+
+    def validate_ach_bytes(file_bytes, filename=None, immediate_origin_rtn=None):
+        ach_file = ACHFile()
+        lines = convertFileToLines(file_bytes.decode("utf-8", errors="replace"))
+        ach_file.parse(file_path=filename, lines=lines, force_ack_on_format_error=True)
+        ack_text = ach_file.validate(is_parsed=True, immediate_origin=immediate_origin_rtn, participating_dfi_rtns=get_ach_participants())
+        ack_lines = ack_text.splitlines()
+        is_valid = len(ack_lines) > 1 and ack_lines[1].startswith("R,")
+        return ack_text, is_valid
+
+    def write_ack_file(outbound_dir, source_filename, ack_text):
+        os.makedirs(outbound_dir, exist_ok=True)
+        ack_basename = os.path.splitext(source_filename or "validation")[0] + ".ack"
+        ack_path = os.path.join(outbound_dir, ack_basename)
+        with open(ack_path, "w", encoding="utf-8", newline="\n") as ack_file:
+            ack_file.write(ack_text)
+        return ack_path
 
     report = {
         "run": timestamp,
         "collected_at": datetime.utcnow().isoformat() + "Z",
+        "info": "Make sure your bank is registred as an ACH participant. Unregistered banks will be skipped.",
         "entries": []
     }
 
@@ -655,79 +1002,78 @@ def collect_inbound_files():
         if not os.path.isdir(bank_dir):
             continue
 
+        bank_rtn = lookup_bank_rtn(bank)
+        if not bank_rtn:
+            logger.warning("Skipping bank folder %s because no bank RTN was found for sftp_username=%s", bank_dir, bank)
+            continue
+
         inbound_dir = os.path.join(bank_dir, "inbound")
         if not os.path.isdir(inbound_dir):
             continue
 
-        target_bank_dir = os.path.join(run_dir, bank)
-        os.makedirs(target_bank_dir, exist_ok=True)
+        outbound_dir = os.path.join(bank_dir, "outbound")
+        os.makedirs(outbound_dir, exist_ok=True)
 
         for entry in sorted(os.listdir(inbound_dir)):
             src_path = os.path.join(inbound_dir, entry)
             if not os.path.isfile(src_path):
                 continue
 
-            target_path = os.path.join(target_bank_dir, entry)
-            # Move the file into collected folder
-            shutil.move(src_path, target_path)
-
-            # Read file content safely
-            try:
-                with open(target_path, "rb") as f:
-                    data = f.read()
-                # Try decode as UTF-8 text
-                try:
-                    text = data.decode("utf-8")
-                    content = {"type": "text", "value": text}
-                except Exception:
-                    b64 = base64.b64encode(data).decode("ascii")
-                    content = {"type": "base64", "value": b64}
-                size = os.path.getsize(target_path)
-
+            is_restricted = check_if_restricted(bank_rtn)
+            if is_restricted == "restricted":
+                ack_file = write_ack_file(os.path.join(bank_dir, "outbound"), entry, f"Bank with RTN {bank_rtn} is currently restricted and cannot send ACH files. Please contact support for more information.")
                 report["entries"].append({
-                    "bank": bank,
-                    "filename": entry,
-                    "size": size,
-                    "content": content
+                    "bank_rtn": bank_rtn,
+                    "sftp_username": bank,
+                    "status": "restricted",
+                    "ack_path": ack_file,
                 })
+                os.remove(src_path)
+                continue
+
+            try:
+                with open(src_path, "rb") as f:
+                    file_bytes = f.read()
+
+                ack_text, is_valid = validate_ach_bytes(file_bytes, filename=entry, immediate_origin_rtn=bank_rtn)
+                ack_path = write_ack_file(outbound_dir, entry, ack_text)
+
+                if is_valid:
+                    target_filename = f"{bank_rtn}_{os.path.basename(entry)}"
+                    target_path = os.path.join(run_dir, target_filename)
+                    # Overwrite existing collected file if present.
+                    if os.path.exists(target_path):
+                        try:
+                            os.remove(target_path)
+                        except Exception:
+                            logger.exception("Failed to remove existing target file %s", target_path)
+                    shutil.move(src_path, target_path)
+                    report["entries"].append({
+                        "bank": bank_rtn,
+                        "sftp_username": bank,
+                        "filename": entry,
+                        "status": "collected",
+                        "size": os.path.getsize(target_path),
+                        "collected_path": target_path,
+                        "ack_path": ack_path,
+                    })
+                else:
+                    os.remove(src_path)
+                    report["entries"].append({
+                        "bank_rtn": bank_rtn,
+                        "sftp_username": bank,
+                        "filename": entry,
+                        "status": "rejected",
+                        "ack_path": ack_path,
+                    })
             except Exception as e:
-                logging.exception("Failed processing %s", target_path)
+                logging.exception("Failed processing %s", src_path)
                 report["entries"].append({
-                    "bank": bank,
+                    "bank_rtn": bank_rtn,
+                    "sftp_username": bank,
                     "filename": entry,
+                    "status": "error",
                     "error": str(e)
                 })
 
-    # Write report to disk
-    report_path = os.path.join(run_dir, "report.json")
-    with open(report_path, "w", encoding="utf-8") as rf:
-        json.dump(report, rf, indent=2, ensure_ascii=False)
-
-    # For testing: write a copy of the report into each bank's outbound folder
-    for bank in sorted(os.listdir(sftp_root)):
-        bank_dir = os.path.join(sftp_root, bank)
-        if not os.path.isdir(bank_dir):
-            continue
-        outbound_dir = os.path.join(bank_dir, "outbound")
-        try:
-            os.makedirs(outbound_dir, exist_ok=True)
-            out_report_path = os.path.join(outbound_dir, f"report_{timestamp}.json")
-            with open(out_report_path, "w", encoding="utf-8") as of:
-                json.dump(report, of, indent=2, ensure_ascii=False)
-            logger.debug("Wrote report to %s", out_report_path)
-        except Exception:
-            logger.exception("Failed writing report to outbound for %s", bank)
-
     return report
-
-
-@ach.post("/collect")
-async def collect_endpoint():
-    try:
-        report = collect_inbound_files()
-        return report
-    except Exception as e:
-        logger.exception("Collect failed")
-        raise HTTPException(status_code=500, detail=str(e))
-
-    

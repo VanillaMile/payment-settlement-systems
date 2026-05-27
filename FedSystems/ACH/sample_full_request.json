@@ -1,0 +1,122 @@
+{
+  "data": {
+    "header": {
+      "immediate_destination": "090000515",
+      "immediate_origin": "040104018",
+      "immediate_destination_name": "FRB Tungsten",
+      "immediate_origin_name": "Baguette Bank",
+      "file_creation_date": "260526",
+      "file_creation_time": "1415",
+      "file_id_modifier": "A",
+      "reference_code": "REF20260526"
+    },
+    "batches": [
+      {
+        "header": {
+          "service_class_code": "200",
+          "company_name": "Baguette Store",
+          "company_discretionary_data": "DISCDATA-B1",
+          "company_identification": "1313131310",
+          "standard_entry_class_code": "PPD",
+          "company_entry_description": "LEEKPAY001",
+          "company_descriptive_date": "260526",
+          "effective_entry_date": "260527",
+          "settlement_date": "",
+          "originator_status_code": "1",
+          "originating_dfi_identification": "04010401",
+          "batch_number": "0000001"
+        },
+        "entries": [
+          {
+            "transaction_code": "22",
+            "receiving_dfi_rtn": "010101012",
+            "dfi_account_number": "123456789",
+            "amount_cents": 15075,
+            "individual_id_number": "INV-1001",
+            "individual_name": "Leek Store A",
+            "trace_number": "040104010000001",
+            "addenda": [
+              {
+                "addenda_type_code": "05",
+                "payment_related_information": "Invoice INV-1001 for leek purchase"
+              }
+            ]
+          },
+          {
+            "transaction_code": "22",
+            "receiving_dfi_rtn": "031000024",
+            "dfi_account_number": "987654321",
+            "amount_cents": 23000,
+            "individual_id_number": "INV-1002",
+            "individual_name": "Leek Store B",
+            "trace_number": "040104010000002",
+            "addenda": [
+              {
+                "addenda_type_code": "05",
+                "payment_related_information": "Invoice INV-1002 for leek purchase"
+              }
+            ]
+          },
+          {
+            "transaction_code": "27",
+            "receiving_dfi_rtn": "123123123",
+            "dfi_account_number": "555666777",
+            "amount_cents": 4500,
+            "individual_id_number": "INV-1003",
+            "individual_name": "Leek Store C",
+            "trace_number": "040104010000003",
+            "addenda": []
+          }
+        ]
+      },
+      {
+        "header": {
+          "service_class_code": "200",
+          "company_name": "Croissant Foods",
+          "company_discretionary_data": "DISCDATA-B2",
+          "company_identification": "1555666777",
+          "standard_entry_class_code": "CCD",
+          "company_entry_description": "LEEKPAY002",
+          "company_descriptive_date": "260526",
+          "effective_entry_date": "260527",
+          "settlement_date": "",
+          "originator_status_code": "1",
+          "originating_dfi_identification": "04010401",
+          "batch_number": "0000002"
+        },
+        "entries": [
+          {
+            "transaction_code": "22",
+            "receiving_dfi_rtn": "021000021",
+            "dfi_account_number": "111222333",
+            "amount_cents": 9900,
+            "individual_id_number": "INV-2001",
+            "individual_name": "Leek Outlet A",
+            "trace_number": "040104010000004",
+            "addenda": []
+          },
+          {
+            "transaction_code": "32",
+            "receiving_dfi_rtn": "026009593",
+            "dfi_account_number": "444555666",
+            "amount_cents": 12000,
+            "individual_id_number": "INV-2002",
+            "individual_name": "Leek Outlet B",
+            "trace_number": "040104010000005",
+            "addenda": []
+          },
+          {
+            "transaction_code": "27",
+            "receiving_dfi_rtn": "122105155",
+            "dfi_account_number": "777888999",
+            "amount_cents": 8750,
+            "individual_id_number": "INV-2003",
+            "individual_name": "Leek Outlet C",
+            "trace_number": "040104010000006",
+            "addenda": []
+          }
+        ]
+      }
+    ]
+  }
+}
