@@ -11,21 +11,29 @@ from pathlib import Path
 
 
 def parse_env(env_file):
-    """Parse .env file and extract BANK* entries."""
+    """Parse .env file and extract exact BANKN entries (e.g. BANK0, BANK1).
+
+    This ignores keys like BANK0_RTN or BANK_NAME — only keys matching
+    the regex ^BANK\d+$ are accepted.
+    """
     banks = {}
     if not os.path.exists(env_file):
         print(f"ERROR: {env_file} not found")
         return banks
-    
+
+    pattern = re.compile(r'^BANK\d+$')
     with open(env_file, 'r') as f:
         for line in f:
             line = line.strip()
-            if line.startswith('BANK') and '=' in line:
-                key, value = line.split('=', 1)
-                key = key.strip()
-                value = value.strip()
+            # skip empty lines and comments
+            if not line or line.startswith('#') or '=' not in line:
+                continue
+            key, value = line.split('=', 1)
+            key = key.strip()
+            value = value.strip()
+            if pattern.fullmatch(key):
                 banks[key] = value
-    
+
     return banks
 
 
