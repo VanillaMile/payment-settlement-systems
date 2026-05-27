@@ -734,12 +734,13 @@ class ACHFile:
 
         return ach_file_lines
     
-    def validate(self, is_parsed=False, immediate_destination=None, immediate_origin=None):
+    def validate(self, is_parsed=False, immediate_destination=None, immediate_origin=None, participating_dfi_rtns=None):
         """
         Validates the ACH file and returns an ACK string.
         - is_parsed: If true, this will validate if the file is made of 10-line blocks, requires the file to be parsed from .ach file.
         - immediate_destination: If provided, this will validate that the immediate destination in the header matches the expected value.
         - immediate_origin: If provided, this will validate that the immediate origin in the header matches the expected value.
+        - participating_dfi_rtns: If provided (as a list of strings e.g., ["123123123", "345345345"]), this will validate that the receiving DFI RTNs in the entries match any of the provided participating DFI RTNs.
         """
         line_errors= []
         
@@ -1105,6 +1106,19 @@ class ACHFile:
             last_number = 2
             for batch in self.batches:
                 last_number = check_batch(last_number)
+
+            if participating_dfi_rtns is not None:
+                for batch in self.batches:
+                    for entry in batch.entries:
+                        if entry.receiving_dfi_identification not in participating_dfi_rtns:
+                            list_to_string = lambda lst: ", ".join(lst)
+                            line_errors.append({
+                                'error_type': 'L',
+                                'line_number': last_number,
+                                'error_code': 5005,
+                                'message': f"Receiving DFI RTN is not in list of participating DFI RTNs: {entry.receiving_dfi_identification} not in {list_to_string(participating_dfi_rtns)}"
+                            })
+                        last_number += 1 + len(entry.addenda)
         except ValueError as error:
             return build_format_error_ack(str(error))
 

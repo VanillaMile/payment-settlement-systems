@@ -889,6 +889,34 @@ def collect_inbound_files():
 
     db_url = os.environ.get("DATABASE_URL")
 
+    def get_ach_participants():
+        """Gets a list of participating DFIs RTNs from the database."""
+        if not db_url:
+            return []
+
+        conn = None
+        cur = None
+        try:
+            conn = psycopg2.connect(db_url, connect_timeout=5)
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute(
+                """
+                SELECT primary_routing_transit_number
+                FROM ach_participants
+                WHERE restricted not in (1, 'restricted') 
+                """
+            )
+            rows = cur.fetchall()
+            return [row.get("primary_routing_transit_number") for row in rows]
+        except Exception:
+            logger.exception("Failed to get ACH participants")
+            return []
+        finally:
+            if cur is not None:
+                cur.close()
+            if conn is not None:
+                conn.close()
+
     def lookup_bank_rtn(sftp_username):
         if not db_url:
             return None
@@ -948,7 +976,7 @@ def collect_inbound_files():
         ach_file = ACHFile()
         lines = convertFileToLines(file_bytes.decode("utf-8", errors="replace"))
         ach_file.parse(file_path=filename, lines=lines, force_ack_on_format_error=True)
-        ack_text = ach_file.validate(is_parsed=True, immediate_origin=immediate_origin_rtn)
+        ack_text = ach_file.validate(is_parsed=True, immediate_origin=immediate_origin_rtn, participating_dfi_rtns=get_ach_participants())
         ack_lines = ack_text.splitlines()
         is_valid = len(ack_lines) > 1 and ack_lines[1].startswith("R,")
         return ack_text, is_valid
