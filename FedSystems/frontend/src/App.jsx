@@ -713,15 +713,88 @@ function HomePage({
 }
 
 function SessionsPage() {
+  const [collectLoading, setCollectLoading] = useState(false)
+  const [collectCooldownUntil, setCollectCooldownUntil] = useState(0)
+  const [collectResult, setCollectResult] = useState('')
+  const [collectError, setCollectError] = useState('')
+
+  const apiUrl = import.meta.env.VITE_ACH_API_BASE_URL || 'http://localhost:8001'
+  const cooldownRemaining = Math.max(0, Math.ceil((collectCooldownUntil - Date.now()) / 1000))
+  const collectDisabled = collectLoading || cooldownRemaining > 0
+
+  const handleCollect = async () => {
+    if (collectDisabled) {
+      return
+    }
+
+    setCollectLoading(true)
+    setCollectError('')
+    setCollectResult('')
+
+    try {
+      const response = await fetch(`${apiUrl}/collect`)
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data?.detail || data?.message || `HTTP ${response.status}`)
+      }
+
+      setCollectResult(JSON.stringify(data, null, 2))
+    } catch (error) {
+      setCollectError(error?.message || 'Failed to collect sessions')
+    } finally {
+      setCollectLoading(false)
+      setCollectCooldownUntil(Date.now() + 3000)
+      window.setTimeout(() => {
+        setCollectCooldownUntil(0)
+      }, 3000)
+    }
+  }
+
   return (
     <main className="container-fluid py-4 py-lg-5">
       <section className="card shadow-sm border-0 rounded-4 bg-white">
         <div className="card-body p-4 p-lg-5">
-          <span className="badge text-bg-secondary mb-3">Sessions Manager</span>
-          <h1 className="display-6 fw-bold mb-2">Sessions Manager</h1>
-          <p className="text-body-secondary mb-4">
-            TODO: This page will hold session tools
-          </p>
+          <div className="mb-3">
+            <div>
+              <span className="badge text-bg-secondary mb-3">Sessions Manager</span>
+              <h1 className="display-6 fw-bold mb-2">Sessions Manager</h1>
+              <p className="text-body-secondary mb-0">
+                Collect inbound ACH sessions and inspect the backend response directly.
+              </p>
+            </div>
+          </div>
+
+          <div className="card border-0 bg-body-tertiary rounded-4">
+            <div className="card-header bg-transparent border-0 pt-3 px-3 px-lg-4 pb-0">
+              <div className="d-flex justify-content-between align-items-start gap-3">
+                <div>
+                  <div className="text-uppercase text-body-secondary small fw-semibold">Collect</div>
+                  <div className="fw-semibold">Backend response</div>
+                </div>
+
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm fw-semibold"
+                  onClick={handleCollect}
+                  disabled={collectDisabled}
+                >
+                  {collectLoading
+                    ? 'Collecting...'
+                    : cooldownRemaining > 0
+                      ? `Collect (${cooldownRemaining}s)`
+                      : 'Callect'}
+                </button>
+              </div>
+            </div>
+
+            <div className="card-body px-3 px-lg-4 pb-4 pt-3">
+              {collectError ? <div className="alert alert-danger mb-3">{collectError}</div> : null}
+              <pre className="mb-0 p-3 rounded-3 bg-dark text-light small overflow-auto" style={{ minHeight: '14rem', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                {collectResult || 'Click Callect to run the backend collect endpoint and print the raw JSON response here.'}
+              </pre>
+            </div>
+          </div>
         </div>
       </section>
     </main>
