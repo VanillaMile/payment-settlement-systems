@@ -25,6 +25,13 @@ MQ_BANK1_URL = os.environ.get("MQ_BANK1_URL", "message-queue-bank1-client:8000")
 MQ_BANK2_URL = os.environ.get("MQ_BANK2_URL", "message-queue-bank2-client:8000")
 MQ_BANK3_URL = os.environ.get("MQ_BANK3_URL", "message-queue-bank3-client:8000")
 
+banks_ports_map = {
+    MQ_BANK0_RTN: MQ_BANK0_URL,
+    MQ_BANK1_RTN: MQ_BANK1_URL,
+    MQ_BANK2_RTN: MQ_BANK2_URL,
+    MQ_BANK3_RTN: MQ_BANK3_URL,
+}
+
 SCRIPT_DIR = Path(__file__).resolve().parent
 RANDOM_SAMPLE_XML_PATH = SCRIPT_DIR / "random_sample.xml"
 
@@ -72,6 +79,15 @@ def collect_message(file: UploadFile = File(...)):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
     
+def process_file():
+    # Placeholder for future processing logic, e.g. parsing XML, validating, etc.
+    
+    # Validate file
+    # Process file
+    # Make 
+    
+    pass
+    
 def _build_multipart_file_body(field_name: str, filename: str, contents: bytes) -> tuple[bytes, str]:
     boundary = uuid.uuid4().hex
     parts = [
@@ -88,15 +104,15 @@ def _build_multipart_file_body(field_name: str, filename: str, contents: bytes) 
 
 
 @fednow.post("/send-message", tags=["Messages"])
-def send_message():
-    """Send the local random_sample.xml file to the first bank endpoint."""
+def send_message(bank_rtn: str, file: UploadFile = File(...)):
+    """Send the local random_sample.xml file to the specified bank endpoint."""
     if not RANDOM_SAMPLE_XML_PATH.exists():
         raise HTTPException(status_code=500, detail=f"Missing sample file: {RANDOM_SAMPLE_XML_PATH.name}")
 
-    source_filename = RANDOM_SAMPLE_XML_PATH.name
-    contents = RANDOM_SAMPLE_XML_PATH.read_bytes()
+    source_filename = f"{bank_rtn}_message_{uuid.uuid4().hex}.xml"
+    contents = file.file.read()
     body, boundary = _build_multipart_file_body("file", source_filename, contents)
-    target_url = MQ_BANK0_URL + "/receive"
+    target_url = banks_ports_map.get(bank_rtn, MQ_BANK0_URL) + "/receive"
 
     http_request = request.Request(target_url, data=body, method="POST")
     http_request.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
