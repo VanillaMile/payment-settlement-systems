@@ -5,7 +5,7 @@ from pydantic import BaseModel
 import secrets
 from database import get_db, Bank, Transaction, NettingReport, GridlockQueue, MessageQueue
 from schemas import LiquidityInjection, BankCreate, SettlementRequest
-from services.xml_service import validate_xml_schema, extract_pacs002_data, extract_rtp_data, generate_pacs002
+from services.xml_service import validate_xml_schema, extract_pacs002_data, extract_rtp_data, generate_pacs002, validate_pacs002_schema
 from services.gridlock_service import resolve_gridlock
 
 router = APIRouter()
@@ -282,13 +282,15 @@ async def settle_transfer(
     current_bank: Bank = Depends(get_current_bank)
 ):
     """Endpoint dla banku docelowego. Odsyła plik pacs.002, co uwalnia środki i powiadamia nadawcę."""
+
     try:
-        # Odczytujemy pacs.002 od Banku B
+        validate_pacs002_schema(xml_data)
+        
         pacs002_data = extract_pacs002_data(xml_data)
         e2e_id = pacs002_data["end_to_end_id"]
         status = pacs002_data["status"]
     except Exception as e:
-        print(f"BŁĄD PARSOWANIA XML: {e}")
+        print(f"BŁĄD WALIDACJI LUB PARSOWANIA XML: {e}")
         return Response(content=generate_pacs002({"end_to_end_id": "UNKNOWN"}, "RJCT"), media_type="application/xml", status_code=400)
 
     transaction = db.query(Transaction).filter(Transaction.message_id == e2e_id).first()
@@ -304,7 +306,6 @@ async def settle_transfer(
 
     sender = db.query(Bank).filter(Bank.bank_code == transaction.sender_code).first()
 
-    # PŁATNOŚĆ I ROZLICZENIE WŁAŚCIWE
     if status == "ACCP":
         sender.balance -= transaction.amount
         current_bank.balance += transaction.amount
@@ -312,7 +313,6 @@ async def settle_transfer(
     else:
         transaction.status = "REJECTED"
 
-    # Aktualizujemy status
     msg_in_queue = db.query(MessageQueue).filter(
         MessageQueue.message_id == e2e_id, 
         MessageQueue.owner_bank_code == current_bank.bank_code
@@ -320,7 +320,19 @@ async def settle_transfer(
     if msg_in_queue:
         msg_in_queue.status = "PROCESSED"
 
-    # Przekzanie pacs.002 do nadawcy
+    response_data = {
+        "end_to_end_id": transaction.message_id,
+        "msg_id": transaction.message_id,
+        "sender_name": transaction.sender_code,
+        "receiver_name": current_bank.bank_code,
+        "amount": transaction.amount,
+        "currency": "USD",
+        "debtor_name": transaction.debtor_name or "UNKNOWN",
+        "debtor_account": transaction.debtor_account or "UNKNOWN",
+        "creditor_name": transaction.creditor_name or "UNKNOWN",
+        "creditor_account": transaction.creditor_account or "UNKNOWN"
+    }
+
     return_message = MessageQueue(
         owner_bank_code=transaction.sender_code,
         message_type="pacs.002",
@@ -333,7 +345,7 @@ async def settle_transfer(
     db.commit()
 
     # Zwracamy Bankowi potwierdzenie o odebraniu pacs.002
-    return Response(content=generate_pacs002({"end_to_end_id": e2e_id}, "ACTC"), media_type="application/xml", status_code=200)
+    return Response(content=generate_pacs002(response_data, "ACTC"), media_type="application/xml", status_code=200)
 
 @router.post("/central-bank/inject", tags=["Bank"])
 def inject_liquidity(injection: LiquidityInjection, db: Session = Depends(get_db)):

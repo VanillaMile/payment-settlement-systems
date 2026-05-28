@@ -52,12 +52,52 @@ ISO_20022_XSD = """<?xml version="1.0" encoding="UTF-8"?>
 </xs:schema>
 """
 
+PACS002_XSD = """<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" 
+           targetNamespace="urn:iso:std:iso:20022:tech:xsd:pacs.002.001.10" 
+           xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.002.001.10" 
+           elementFormDefault="qualified">
+  <xs:element name="Document">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="FIToFIPmtStsRpt">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="GrpHdr" type="xs:anyType"/>
+              <xs:element name="OrgnlGrpInfAndSts" type="xs:anyType"/>
+              <xs:element name="TxInfAndSts">
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element name="OrgnlEndToEndId" type="xs:string"/>
+                    <xs:element name="TxSts" type="xs:string"/>
+                    <xs:any processContents="skip" minOccurs="0" maxOccurs="unbounded"/>
+                  </xs:sequence>
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>
+"""
+
+# pacs.008
 schema_root = lxml_etree.XML(ISO_20022_XSD.encode('utf-8'))
 iso_schema = lxml_etree.XMLSchema(schema_root)
 
 def validate_xml_schema(xml_string: str):
     xml_doc = lxml_etree.fromstring(xml_string.encode('utf-8'))
     iso_schema.assertValid(xml_doc)
+
+# pacs.002
+pacs002_schema_root = lxml_etree.XML(PACS002_XSD.encode('utf-8'))
+pacs002_iso_schema = lxml_etree.XMLSchema(pacs002_schema_root)
+
+def validate_pacs002_schema(xml_string: str):
+    xml_doc = lxml_etree.fromstring(xml_string.encode('utf-8'))
+    pacs002_iso_schema.assertValid(xml_doc)
 
 def extract_rtp_data(xml_string: str):
     root = ET.fromstring(xml_string)
@@ -109,26 +149,26 @@ def extract_pacs002_data(xml_string: str):
     }
 
 def generate_pacs002(data: dict, status: str) -> str:
-    new_msg_id = f"MSG-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8].upper()}"
+    msg_id = f"MSG-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8].upper()}"
     cre_dt_tm = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
-    ref_id = f"REF-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8].upper()}"
+    acct_svcr_ref = f"REF-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8].upper()}"
     
-    e2e_id = data.get("end_to_end_id", "UNKNOWN")
-    orgnl_msg_id = data.get("msg_id", e2e_id) 
-    sender_nm = data.get("sender_name", data.get("sender_code", "UNKNOWN"))
-    receiver_nm = data.get("receiver_name", data.get("receiver_code", "UNKNOWN"))
-    amount = data.get("amount", "0.00")
+    e2e_id = data.get("end_to_end_id", "E2E-UNKNOWN")
+    org_msg_id = data.get("msg_id", e2e_id)
+    sender_nm = data.get("sender_name", "UNKNOWN_SENDER")
+    receiver_nm = data.get("receiver_name", "UNKNOWN_RECEIVER")
+    amount = str(data.get("amount", "0.00"))
     currency = data.get("currency", "USD")
     dbtr_nm = data.get("debtor_name", "UNKNOWN")
     dbtr_acct = data.get("debtor_account", "UNKNOWN")
     cdtr_nm = data.get("creditor_name", "UNKNOWN")
     cdtr_acct = data.get("creditor_account", "UNKNOWN")
-    
+
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.002.001.10">
     <FIToFIPmtStsRpt>
         <GrpHdr>
-            <MsgId>{new_msg_id}</MsgId>
+            <MsgId>{msg_id}</MsgId>
             <CreDtTm>{cre_dt_tm}</CreDtTm>
             <InstgAgt>
                 <FinInstnId>
@@ -142,13 +182,13 @@ def generate_pacs002(data: dict, status: str) -> str:
             </InstdAgt>
         </GrpHdr>
         <OrgnlGrpInfAndSts>
-            <OrgnlMsgId>{orgnl_msg_id}</OrgnlMsgId>
+            <OrgnlMsgId>{org_msg_id}</OrgnlMsgId>
             <GrpSts>{status}</GrpSts>
         </OrgnlGrpInfAndSts>
         <TxInfAndSts>
             <OrgnlEndToEndId>{e2e_id}</OrgnlEndToEndId>
             <TxSts>{status}</TxSts>
-            <AcctSvcrRef>{ref_id}</AcctSvcrRef>
+            <AcctSvcrRef>{acct_svcr_ref}</AcctSvcrRef>
             <OrgnlTxRef>
                 <IntrBkSttlmAmt Ccy="{currency}">{amount}</IntrBkSttlmAmt>
                 <Dbtr>
