@@ -3,6 +3,8 @@ import secrets
 from datetime import datetime, timezone
 from sqlalchemy import create_engine, Column, String, Float, DateTime, Integer
 from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Text
+from sqlalchemy.sql import func
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://rtp_user:rtp_password@postgres-rtp:5432/rtp_database")
 
@@ -47,6 +49,16 @@ class NettingReport(Base):
     net_position = Column(Float)
     status = Column(String)
     timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+class MessageQueue(Base):
+    __tablename__ = "message_queue"
+    id = Column(Integer, primary_key=True, index=True)
+    owner_bank_code = Column(String, ForeignKey("banks.bank_code"), index=True) 
+    message_type = Column(String)
+    message_id = Column(String, index=True)
+    payload = Column(Text)
+    status = Column(String, default="PENDING")
+    created_at = Column(DateTime(timezone=True), default=func.now())
 
 def get_db():
     db = SessionLocal()

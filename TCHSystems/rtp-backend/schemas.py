@@ -9,3 +9,8 @@ class BankCreate(BaseModel):
 class LiquidityInjection(BaseModel):
     bank_code: str
     amount: float
+
+class SettlementRequest(BaseModel):
+    message_id: str
+    status: str # "ACCP" lub "RJCT"
+    reason: str = ""
