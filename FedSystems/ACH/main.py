@@ -36,6 +36,198 @@ archive_dir = "archive"
 if not os.path.exists(archive_dir):
     os.makedirs(archive_dir)
 
+# Automated bank configuration on startup variables
+BANK0 = os.environ.get("BANK0", "baguette-bank")
+BANK1 = os.environ.get("BANK1", "leek-bank")
+BANK2 = os.environ.get("BANK2", "bank-of-the-onion")
+BANK3 = os.environ.get("BANK3", "croissant-bank")
+BANK4 = os.environ.get("BANK4", "donut-bank")
+BANK5 = os.environ.get("BANK5", "coffee-bank")
+
+BANK0_RTN = os.environ.get("BANK0_RTN", "040104018")
+BANK1_RTN = os.environ.get("BANK1_RTN", "010101012")
+BANK2_RTN = os.environ.get("BANK2_RTN", "910310314")
+BANK3_RTN = os.environ.get("BANK3_RTN", "514310008")
+BANK4_RTN = os.environ.get("BANK4_RTN", "888777885")
+BANK5_RTN = os.environ.get("BANK5_RTN", "666777667")
+
+BANK0_MRTN = os.environ.get("BANK0_MRTN", BANK0_RTN)
+BANK1_MRTN = os.environ.get("BANK1_MRTN", BANK1_RTN)
+BANK2_MRTN = os.environ.get("BANK2_MRTN", BANK2_RTN)
+BANK3_MRTN = os.environ.get("BANK3_MRTN", BANK3_RTN)
+BANK4_MRTN = os.environ.get("BANK4_MRTN", BANK4_RTN)
+BANK5_MRTN = os.environ.get("BANK5_MRTN", BANK5_RTN)
+
+BANK0_LEGAL_NAME = os.environ.get("BANK0_LEGAL_NAME", "Baguette Bank")
+BANK1_LEGAL_NAME = os.environ.get("BANK1_LEGAL_NAME", "Leek Bank")
+BANK2_LEGAL_NAME = os.environ.get("BANK2_LEGAL_NAME", "Bank of the Onion")
+BANK3_LEGAL_NAME = os.environ.get("BANK3_LEGAL_NAME", "Croissant Bank")
+BANK4_LEGAL_NAME = os.environ.get("BANK4_LEGAL_NAME", "Donut Bank")
+BANK5_LEGAL_NAME = os.environ.get("BANK5_LEGAL_NAME", "Coffee Bank")
+
+BANK0_FEIN = os.environ.get("BANK0_FEIN", "123456789")
+BANK1_FEIN = os.environ.get("BANK1_FEIN", "987654321")
+BANK2_FEIN = os.environ.get("BANK2_FEIN", "555555555")
+BANK3_FEIN = os.environ.get("BANK3_FEIN", "111111111")
+BANK4_FEIN = os.environ.get("BANK4_FEIN", "222222222")
+BANK5_FEIN = os.environ.get("BANK5_FEIN", "333333333")
+
+BANK0_NET_DEBIT_CAP = int(os.environ.get("BANK0_NET_DEBIT_CAP", "100000000"))
+BANK1_NET_DEBIT_CAP = int(os.environ.get("BANK1_NET_DEBIT_CAP", "100000000"))
+BANK2_NET_DEBIT_CAP = int(os.environ.get("BANK2_NET_DEBIT_CAP", "100000000"))
+BANK3_NET_DEBIT_CAP = int(os.environ.get("BANK3_NET_DEBIT_CAP", "100000000"))
+BANK4_NET_DEBIT_CAP = int(os.environ.get("BANK4_NET_DEBIT_CAP", "100000000"))
+BANK5_NET_DEBIT_CAP = int(os.environ.get("BANK5_NET_DEBIT_CAP", "100000000"))
+
+BANK0_INITIAL_BALANCE = int(os.environ.get("BANK0_INITIAL_BALANCE", "1000000000"))
+BANK1_INITIAL_BALANCE = int(os.environ.get("BANK1_INITIAL_BALANCE", "1000000000"))
+BANK2_INITIAL_BALANCE = int(os.environ.get("BANK2_INITIAL_BALANCE", "1000000000"))
+BANK3_INITIAL_BALANCE = int(os.environ.get("BANK3_INITIAL_BALANCE", "1000000000"))
+BANK4_INITIAL_BALANCE = int(os.environ.get("BANK4_INITIAL_BALANCE", "1000000000"))
+BANK5_INITIAL_BALANCE = int(os.environ.get("BANK5_INITIAL_BALANCE", "1000000000"))
+
+
+def seed_bank_to_database(db_url, bank_config):
+    conn = None
+    cur = None
+    try:
+        conn = psycopg2.connect(db_url, connect_timeout=5)
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        cur.execute(
+            """
+            INSERT INTO bank_details (
+                primary_routing_transit_number,
+                legal_name,
+                federal_employer_identification_number,
+                master_account_rtn,
+                net_debit_cap,
+                sftp_username,
+                server_certificate_expiry
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (primary_routing_transit_number) DO UPDATE
+              SET legal_name = EXCLUDED.legal_name,
+                  federal_employer_identification_number = EXCLUDED.federal_employer_identification_number,
+                  master_account_rtn = EXCLUDED.master_account_rtn,
+                  net_debit_cap = EXCLUDED.net_debit_cap,
+                  sftp_username = EXCLUDED.sftp_username,
+                  server_certificate_expiry = EXCLUDED.server_certificate_expiry
+            RETURNING *
+            """,
+            (
+                bank_config["primary_routing_transit_number"],
+                bank_config["legal_name"],
+                bank_config["federal_employer_identification_number"],
+                bank_config["master_account_rtn"],
+                bank_config["net_debit_cap"],
+                bank_config["sftp_username"],
+                bank_config["server_certificate_expiry"],
+            ),
+        )
+
+        cur.execute(
+            """
+            INSERT INTO ach_participants (primary_routing_transit_number, type, restricted)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (primary_routing_transit_number) DO UPDATE
+              SET type = EXCLUDED.type,
+                  restricted = EXCLUDED.restricted
+            """,
+            (
+                bank_config["primary_routing_transit_number"],
+                "both",
+                0,
+            ),
+        )
+
+        conn.commit()
+        logger.info(
+            "Seeded bank %s (%s) into database",
+            bank_config["sftp_username"],
+            bank_config["primary_routing_transit_number"],
+        )
+    except Exception:
+        if conn is not None:
+            conn.rollback()
+        logger.exception(
+            "Failed to seed bank %s into database",
+            bank_config.get("sftp_username"),
+        )
+    finally:
+        if cur is not None:
+            cur.close()
+        if conn is not None:
+            conn.close()
+
+
+BANK_SEED_CONFIGS = [
+    {
+        "primary_routing_transit_number": BANK0_RTN,
+        "legal_name": BANK0_LEGAL_NAME,
+        "federal_employer_identification_number": BANK0_FEIN,
+        "master_account_rtn": BANK0_MRTN,
+        "net_debit_cap": BANK0_NET_DEBIT_CAP,
+        "sftp_username": BANK0,
+        "server_certificate_expiry": None,
+    },
+    {
+        "primary_routing_transit_number": BANK1_RTN,
+        "legal_name": BANK1_LEGAL_NAME,
+        "federal_employer_identification_number": BANK1_FEIN,
+        "master_account_rtn": BANK1_MRTN,
+        "net_debit_cap": BANK1_NET_DEBIT_CAP,
+        "sftp_username": BANK1,
+        "server_certificate_expiry": None,
+    },
+    {
+        "primary_routing_transit_number": BANK2_RTN,
+        "legal_name": BANK2_LEGAL_NAME,
+        "federal_employer_identification_number": BANK2_FEIN,
+        "master_account_rtn": BANK2_MRTN,
+        "net_debit_cap": BANK2_NET_DEBIT_CAP,
+        "sftp_username": BANK2,
+        "server_certificate_expiry": None,
+    },
+    {
+        "primary_routing_transit_number": BANK3_RTN,
+        "legal_name": BANK3_LEGAL_NAME,
+        "federal_employer_identification_number": BANK3_FEIN,
+        "master_account_rtn": BANK3_MRTN,
+        "net_debit_cap": BANK3_NET_DEBIT_CAP,
+        "sftp_username": BANK3,
+        "server_certificate_expiry": None,
+    },
+    {
+        "primary_routing_transit_number": BANK4_RTN,
+        "legal_name": BANK4_LEGAL_NAME,
+        "federal_employer_identification_number": BANK4_FEIN,
+        "master_account_rtn": BANK4_MRTN,
+        "net_debit_cap": BANK4_NET_DEBIT_CAP,
+        "sftp_username": BANK4,
+        "server_certificate_expiry": None,
+    },
+    {
+        "primary_routing_transit_number": BANK5_RTN,
+        "legal_name": BANK5_LEGAL_NAME,
+        "federal_employer_identification_number": BANK5_FEIN,
+        "master_account_rtn": BANK5_MRTN,
+        "net_debit_cap": BANK5_NET_DEBIT_CAP,
+        "sftp_username": BANK5,
+        "server_certificate_expiry": None,
+    },
+]
+
+
+if os.environ.get("AUTOMATED_CONFIG") == "true":
+    automated_db_url = os.environ.get("DATABASE_URL")
+    if not automated_db_url:
+        logger.warning("AUTOMATED_CONFIG is enabled but DATABASE_URL is not set; skipping bank seeding")
+    else:
+        for bank_config in BANK_SEED_CONFIGS:
+            seed_bank_to_database(automated_db_url, bank_config)
+    
+
 class AddAchBankRequest(BaseModel):
     primary_routing_transit_number: str
     legal_name: str
