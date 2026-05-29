@@ -310,38 +310,44 @@ API also available at  http://localhost:8770/docs
 
 # RTP System
 
-## Table of contents
+## Table of Contents
+
 - [Project Overview](#project-overview)
-- [How to start the system](#how-to-start-the-system)
+- [Technologies](#technologies)
+- [System Architecture](#system-architecture)
+- [Database Structure](#database-structure)
+- [Getting Started](#getting-started)
 - [Authentication](#authentication)
-- [RTP Payment Flow](#rtp-payment-flow)
-- [Gridlock & Netting Mechanism](#gridlock-mechanism)
+- [Bank Onboarding](#bank-onboarding)
+- [RTP Payment Workflow](#rtp-payment-workflow)
+- [Message Queue System](#message-queue-system)
+- [Gridlock & Netting Mechanism](#gridlock--netting-mechanism)
+- [Liquidity Management](#liquidity-management)
 - [API Endpoints](#api-endpoints)
 - [Database Models](#database-models)
+- [Error Codes](#error-codes)
 
 ---
 
-# Project overview
+# Project Overview
 
-This project is a simplified simulation of an American **Real-Time Payments (RTP)** settlement system created for university purposes.
+This project is a simulation of an American **Real-Time Payments (RTP)** settlement system built for university purposes.
 
-The system allows banks to:
+The system enables financial institutions to:
 
 - register in the RTP network,
 - authenticate using API keys,
-- send ISO 20022 payment messages,
+- send and receive ISO 20022 payment messages,
+- process payments asynchronously,
 - settle transactions in real time,
 - queue transactions during liquidity shortages,
-- resolve payment gridlocks through netting,
-- inject liquidity from the central bank,
-- monitor balances and transaction history.
+- resolve gridlocks using netting,
+- inject liquidity through the central bank,
+- retrieve incoming payment messages from the message queue,
+- confirm settlements using `pacs.002` responses,
+- monitor balances, transactions, and queue states.
 
-The application is built using:
-
-- FastAPI
-- PostgreSQL
-- SQLAlchemy
-- Docker
+The project is compatible with simplified banking systems using ISO 20022 messaging standards.
 
 ---
 
@@ -361,60 +367,69 @@ The application is built using:
 ## Containerization
 
 - Docker
+- Docker Compose
 
-## Messaging standard
+## Messaging Standard
 
 - ISO 20022 XML
+  - `pacs.008` — payment initiation
+  - `pacs.002` — payment status report
 
 ---
 
-# System architecture
-
-The project consists of:
+# System Architecture
 
 | Component | Description |
 |---|---|
 | `main.py` | Main FastAPI application |
-| `routers.py` | API endpoints and RTP logic |
-| `database.py` | Database models and configuration |
+| `routers.py` | API endpoints and RTP processing logic |
+| `database.py` | SQLAlchemy models and DB configuration |
 | `schemas.py` | Pydantic request schemas |
-| `Dockerfile` | Container definition |
-| PostgreSQL | Persistent data storage |
+| `services/xml_service.py` | XML validation and parsing |
+| `services/gridlock_service.py` | Netting and gridlock resolution |
+| `message_queue` | Asynchronous payment delivery |
+| PostgreSQL | Persistent storage |
 
 ---
 
-# Database structure
+# Database Structure
 
-The system uses four main database tables:
+The system uses the following database tables:
 
 | Table | Purpose |
 |---|---|
 | `banks` | Registered RTP participants |
-| `transactions` | Processed transactions |
-| `gridlock_queue` | Queued transactions |
-| `netting_reports` | Netting settlement reports |
+| `transactions` | Payment transactions |
+| `gridlock_queue` | Queued transactions with insufficient liquidity |
+| `netting_reports` | Netting session reports |
+| `message_queue` | Interbank asynchronous message queue |
 
 ---
 
-## How to start the system
+# Getting Started
 
-### Prerequisites
+## Prerequisites
+
 - Docker
+- Docker Compose
 
-### Launching the application
+## Launching the System
 
-To start the entire system (database, backend, and frontend), use a single command in the project's root directory:
+Start the backend and PostgreSQL infrastructure:
+
 ```bash
 docker-compose up --build
-```
+````
 
-To clear all the data use:
+To clear all system data:
+
 ```bash
 docker-compose down -v
 ```
+
 ---
 
-# Interactive API documentation
+# Interactive API Documentation
 
 Swagger UI:
 
@@ -437,15 +452,14 @@ http://localhost:3000
 # Authentication
 
 The RTP system uses API Key authentication.
-Every protected request must include api key.
 
-Example:
+Protected endpoints require the following header:
 
 ```http
-x-api-key: key-d4e5f6a7b8c9d0e1
+x-api-key: key-xxxxxxxxxxxxxxxx
 ```
 
-If the API key is invalid, the system returns:
+If the API key is invalid or missing:
 
 ```json
 {
@@ -455,11 +469,9 @@ If the API key is invalid, the system returns:
 
 ---
 
-# Bank onboarding process
+# Bank Onboarding
 
-## Register bank
-
-Banks must first register in the RTP system.
+## Register a Bank
 
 ### Request
 
@@ -468,11 +480,11 @@ POST /banks
 Content-Type: application/json
 ```
 
-### Request body
+### Request Body
 
 ```json
 {
-  "bank_code": "BANKC",
+  "bank_code": "BANKA",
   "balance": 10000,
   "debt_limit": 5000
 }
@@ -482,167 +494,29 @@ Content-Type: application/json
 
 ```json
 {
-  "message": "Bank BANKC registered successfully.",
-  "api_key": "key-d4e5f6a7b8c9d0e1"
-}
-```
-
-The generated API key should be stored securely by the bank.
-
----
-
-## Send RTP transfers
-
-Banks send ISO 20022 XML messages to:
-
-```http
-POST /transfer
-```
-
-The RTP system validates and processes the transfer in real time.
-
----
-
-# ISO 20022 payment format
-
-The system accepts simplified ISO 20022 XML payment messages.
-
-## Required XML fields
-
-| Field | Description |
-|---|---|
-| `MsgId` | Message identifier |
-| `EndToEndId` | Transaction identifier |
-| `IntrBkSttlmAmt` | Settlement amount |
-| `DbtrAgt` | Sender bank |
-| `CdtrAgt` | Receiver bank |
-
----
-
-# RTP payment flow
-
-## Standard transfer flow
-
-1. Bank creates ISO 20022 XML message.
-2. Bank sends request to:
-
-```http
-POST /transfer
-```
-
-3. Request must contain:
-
-```http
-Content-Type: application/xml
-x-api-key
-```
-
-4. RTP system validates:
-   - XML structure,
-   - sender authentication,
-   - receiver existence,
-   - duplicate transactions,
-   - liquidity availability,
-   - supported currency.
-
-5. If funds are available:
-   - sender balance decreases,
-   - receiver balance increases,
-   - transaction is settled instantly.
-
-6. RTP system returns settlement response.
-
-7. Bank application should update customer transaction state.
-
----
-
-# Gridlock mechanism
-
-If a bank does not have enough liquidity:
-
-- transaction is added to `gridlock_queue`,
-- transaction receives `GRIDLOCK_QUEUED` status,
-- bank may eventually become blocked.
-
-Queued transactions may later be settled through netting.
-
----
-
-## Netting process
-
-The `/gridlock-resolve` endpoint:
-
-1. Calculates net positions for all queued payments.
-2. Checks whether all banks remain within debt limits.
-3. If possible:
-   - balances are updated,
-   - queued transactions are settled,
-   - queue is cleared,
-   - netting reports are generated.
-
----
-
-# Liquidity timeout logic
-
-If a bank exceeds its liquidity limit and does not recover within 60 seconds:
-
-- bank status changes to `BLOCKED`,
-- further transfers are rejected.
-
-Bank liquidity can later be restored using:
-
-```http
-POST /central-bank/inject
-```
-
----
-
-# Bank statuses
-
-| Status | Description |
-|---|---|
-| `ACTIVE` | Bank can send transactions |
-| `BLOCKED` | Bank exceeded liquidity limits |
-
----
-
-# API endpoints
-
-# Health check
-
-## GET `/`
-
-Returns RTP system status.
-
-### Response
-
-```json
-{
-  "message": "RTP system works"
+  "message": "Bank BANKA registered successfully.",
+  "api_key": "key-xxxxxxxxxxxxxxxx",
+  "instructions": "use the API key for transfer requests"
 }
 ```
 
 ---
 
-# Bank management
+## Reset API Key
 
-## POST `/banks`
-
-Registers a new bank.
-
----
-
-## POST `/banks/{bank_code}/reset-key`
-
-Resets API key for selected bank.
+```http
+POST /banks/{bank_code}/reset-key
+```
 
 ---
 
-## PATCH `/banks/{bank_code}/status`
+## Update Bank Status
 
-Updates bank status.
+```http
+PATCH /banks/{bank_code}/status
+```
 
-### Example request
+Example request:
 
 ```json
 {
@@ -652,69 +526,223 @@ Updates bank status.
 
 ---
 
-## GET `/banks`
+# ISO 20022 Payment Format
 
-Returns balances, debt limits, and statuses of all banks.
+The RTP system accepts simplified ISO 20022 XML messages.
+
+## Supported Message Types
+
+| Message    | Purpose                     |
+| ---------- | --------------------------- |
+| `pacs.008` | Payment transfer            |
+| `pacs.002` | Payment status confirmation |
 
 ---
 
-# Transactions
+# RTP Payment Workflow
 
-## POST `/transfer`
+## 1. Payment Submission
 
-Processes RTP transfer.
+Banks submit `pacs.008` XML messages to:
 
-### Required headers
+```http
+POST /transfers
+```
+
+### Required Headers
 
 ```http
 Content-Type: application/xml
-api key:
+x-api-key: key-xxxxxxxxxxxxxxxx
 ```
 
 ---
 
-## GET `/transactions`
+## 2. RTP Validation
 
-Returns latest 50 transactions.
+The RTP system validates:
+
+* XML schema,
+* sender authentication,
+* receiver existence,
+* duplicate transactions,
+* currency (`USD` only),
+* transaction amount,
+* bank liquidity,
+* blocked bank status.
 
 ---
 
-## GET `/queue`
+## 3. Liquidity Check
 
-Returns queued gridlock transfers.
+### If Sufficient Funds Exist
+
+The system:
+
+* creates transaction with `PENDING` status,
+* places XML into receiver message queue,
+* returns `ACTC` confirmation.
+
+Response:
+
+```http
+202 Accepted
+```
 
 ---
 
-# Netting
+### If Liquidity Is Insufficient
 
-## POST `/gridlock-resolve`
+The system:
 
-Attempts to resolve queued transactions.
+* adds transaction to `gridlock_queue`,
+* returns `PDNG` response,
+* automatically triggers gridlock resolution.
 
-### Example response
+Response:
+
+```http
+202 Accepted
+```
+
+---
+
+# Message Queue System
+
+The RTP system uses asynchronous interbank communication.
+
+---
+
+## Fetch Incoming Messages
+
+Receiving banks retrieve queued messages from:
+
+```http
+GET /queue/incoming
+```
+
+### Example Response
 
 ```json
 {
-  "status": "SUCCESS",
-  "message": "Settled 3 queued transfers."
+  "messages": [
+    {
+      "queue_id": 1,
+      "message_id": "E2E-123",
+      "type": "pacs.008",
+      "payload": "<xml>"
+    }
+  ]
 }
+```
+
+Messages are marked as:
+
+```text
+FETCHED
+```
+
+after retrieval.
+
+---
+
+## Confirm Settlement
+
+Receiving bank confirms settlement using `pacs.002`:
+
+```http
+POST /transfers/settle
 ```
 
 ---
 
-## GET `/netting-reports`
+## Settlement Logic
 
-Returns generated netting reports.
+If settlement status equals:
+
+```text
+ACCP
+```
+
+the system:
+
+* debits sender balance,
+* credits receiver balance,
+* updates transaction status to `COMPLETED`.
+
+Otherwise transaction status becomes:
+
+```text
+REJECTED
+```
+
+The sender bank receives asynchronous `pacs.002` confirmation through the message queue.
 
 ---
 
-# Central bank operations
+# Gridlock & Netting Mechanism
 
-## POST `/central-bank/inject`
+If liquidity is insufficient:
 
-Injects liquidity into selected bank.
+* payment enters `gridlock_queue`,
+* transaction receives pending state,
+* automatic netting may resolve queued payments.
 
-### Example request
+---
+
+## Netting Process
+
+Endpoint:
+
+```http
+POST /gridlock-resolve
+```
+
+The system:
+
+1. Calculates net positions,
+2. Validates debt limits,
+3. Resolves queued transactions when possible,
+4. Generates netting reports,
+5. Clears settled queue entries.
+
+---
+
+# Liquidity Management
+
+## Debt Limit Logic
+
+Banks may temporarily operate below zero balance within their debt limit.
+
+---
+
+## Liquidity Timeout
+
+If a bank exceeds liquidity limits for more than:
+
+```text
+60 seconds
+```
+
+its status changes automatically to:
+
+```text
+BLOCKED
+```
+
+Further outgoing transfers are rejected.
+
+---
+
+## Central Bank Injection
+
+Liquidity may be restored using:
+
+```http
+POST /central-bank/inject
+```
+
+### Example Request
 
 ```json
 {
@@ -723,7 +751,7 @@ Injects liquidity into selected bank.
 }
 ```
 
-### Example response
+### Example Response
 
 ```json
 {
@@ -732,28 +760,96 @@ Injects liquidity into selected bank.
 }
 ```
 
+If liquidity is restored above debt limit, bank status becomes:
+
+```text
+ACTIVE
+```
+
 ---
 
-# Example requests
+# Bank Statuses
 
-# Example RTP transfer request
+| Status    | Description                     |
+| --------- | ------------------------------- |
+| `ACTIVE`  | Bank can process transfers      |
+| `BLOCKED` | Bank exceeded liquidity timeout |
 
 ---
 
-## Example XML file
+# API Endpoints
+
+# Health Check
+
+## GET `/`
+
+Returns system status.
+
+---
+
+# Bank Management
+
+| Method  | Endpoint                       | Description                         |
+| ------- | ------------------------------ | ----------------------------------- |
+| `POST`  | `/banks`                       | Register bank                       |
+| `POST`  | `/banks/{bank_code}/reset-key` | Reset API key                       |
+| `PATCH` | `/banks/{bank_code}/status`    | Update bank status                  |
+| `GET`   | `/banks`                       | Retrieve bank balances and statuses |
+
+---
+
+# Transfers
+
+| Method | Endpoint            | Description                  |
+| ------ | ------------------- | ---------------------------- |
+| `POST` | `/transfers`        | Submit `pacs.008` transfer   |
+| `POST` | `/transfers/settle` | Submit `pacs.002` settlement |
+| `GET`  | `/transactions`     | Retrieve recent transactions |
+
+---
+
+# Message Queue
+
+| Method | Endpoint          | Description                        |
+| ------ | ----------------- | ---------------------------------- |
+| `GET`  | `/queue/incoming` | Fetch incoming messages            |
+| `GET`  | `/queue`          | Retrieve queued gridlock transfers |
+
+---
+
+# Netting
+
+| Method | Endpoint            | Description              |
+| ------ | ------------------- | ------------------------ |
+| `POST` | `/gridlock-resolve` | Trigger netting process  |
+| `GET`  | `/netting-reports`  | Retrieve netting reports |
+
+---
+
+# Central Bank Operations
+
+| Method | Endpoint               | Description      |
+| ------ | ---------------------- | ---------------- |
+| `POST` | `/central-bank/inject` | Inject liquidity |
+
+---
+
+# Example RTP Transfer
+
+## Example `pacs.008`
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.008.001.08">
   <FIToFICstmrCdtTrf>
     <GrpHdr>
-      <MsgId>MSG-20260526-0001</MsgId>
+      <MsgId>MSG-2026-0001</MsgId>
     </GrpHdr>
     <CdtTrfTxInf>
       <PmtId>
-        <EndToEndId>E2E-20260526-0001</EndToEndId>
+        <EndToEndId>E2E-TEST-0001</EndToEndId>
       </PmtId>
-      <IntrBkSttlmAmt Ccy="USD">100000.50</IntrBkSttlmAmt>
+      <IntrBkSttlmAmt Ccy="USD">150.00</IntrBkSttlmAmt>
       
       <DbtrAgt>
         <FinInstnId>
@@ -763,12 +859,12 @@ Injects liquidity into selected bank.
         </FinInstnId>
       </DbtrAgt>
       <Dbtr>
-        <Nm>Sender name</Nm>
+        <Nm>Jan Kowalski</Nm>
       </Dbtr>
       <DbtrAcct>
         <Id>
           <Othr>
-            <Id>PL1234567890</Id>
+            <Id>111122223333</Id>
           </Othr>
         </Id>
       </DbtrAcct>
@@ -781,12 +877,222 @@ Injects liquidity into selected bank.
         </FinInstnId>
       </CdtrAgt>
       <Cdtr>
-        <Nm>Receiver name</Nm>
+        <Nm>John Doe</Nm>
       </Cdtr>
       <CdtrAcct>
         <Id>
           <Othr>
-            <Id>PL0987654321</Id>
+            <Id>999988887777</Id>
+          </Othr>
+        </Id>
+      </CdtrAcct>
+    </CdtTrfTxInf>
+  </FIToFICstmrCdtTrf>
+</Document>
+```
+
+# Example RTP Transfer
+
+## Example `pacs.002`
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.008.001.08">
+  <FIToFICstmrCdtTrf>
+    <GrpHdr>
+      <MsgId>MSG-2026-0001</MsgId>
+    </GrpHdr>
+    <CdtTrfTxInf>
+      <PmtId>
+        <EndToEndId>E2E-TEST-0001</EndToEndId>
+      </PmtId>
+      <IntrBkSttlmAmt Ccy="USD">150.00</IntrBkSttlmAmt>
+      
+      <DbtrAgt>
+        <FinInstnId>
+          <ClrSysMmbId>
+            <MmbId>BANKA</MmbId>
+          </ClrSysMmbId>
+        </FinInstnId>
+      </DbtrAgt>
+      <Dbtr>
+        <Nm>Jan Kowalski</Nm>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <Othr>
+            <Id>111122223333</Id>
+          </Othr>
+        </Id>
+      </DbtrAcct>
+      
+      <CdtrAgt>
+        <FinInstnId>
+          <ClrSysMmbId>
+            <MmbId>BANKB</MmbId>
+          </ClrSysMmbId>
+        </FinInstnId>
+      </CdtrAgt>
+      <Cdtr>
+        <Nm>John Doe</Nm>
+      </Cdtr>
+      <CdtrAcct>
+        <Id>
+          <Othr>
+            <Id>999988887777</Id>
+          </Othr>
+        </Id>
+      </CdtrAcct>
+    </CdtTrfTxInf>
+  </FIToFICstmrCdtTrf>
+</Document>
+```
+---
+
+# Example End-to-End RTP Transfer Scenario
+
+This section presents a complete RTP payment flow between two banks using the asynchronous Message Queue architecture.
+
+## Scenario
+
+| Bank | Role |
+|---|---|
+| `BANKA` | Sender bank |
+| `BANKB` | Receiver bank |
+
+Transfer amount:
+
+```text
+150 USD
+```
+
+---
+
+# 1 Register Banks
+
+## Register BANK A
+
+### Request
+
+```http
+POST /banks
+Content-Type: application/json
+```
+
+### Request Body
+
+```json
+{
+  "bank_code": "BANKA",
+  "balance": 10000,
+  "debt_limit": 5000
+}
+```
+
+### Response
+
+```json
+{
+  "message": "Bank BANKA registered successfully.",
+  "api_key": "key-banka"
+}
+```
+
+Save the generated API key.
+
+---
+
+## Register BANK B
+
+### Request
+
+```http
+POST /banks
+Content-Type: application/json
+```
+
+### Request Body
+
+```json
+{
+  "bank_code": "BANKB",
+  "balance": 8000,
+  "debt_limit": 3000
+}
+```
+
+### Response
+
+```json
+{
+  "message": "Bank BANKB registered successfully.",
+  "api_key": "key-bankb"
+}
+```
+
+Save the generated API key.
+
+---
+
+# 2 BANK A Sends `pacs.008`
+
+BANK A initiates RTP transfer.
+
+## Request
+
+```http
+POST /transfers
+Content-Type: application/xml
+x-api-key: key-banka
+```
+
+## XML Payload (`pacs.008`)
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.008.001.08">
+  <FIToFICstmrCdtTrf>
+    <GrpHdr>
+      <MsgId>MSG-2026-0001</MsgId>
+    </GrpHdr>
+    <CdtTrfTxInf>
+      <PmtId>
+        <EndToEndId>E2E-TEST-0001</EndToEndId>
+      </PmtId>
+      <IntrBkSttlmAmt Ccy="USD">150.00</IntrBkSttlmAmt>
+      
+      <DbtrAgt>
+        <FinInstnId>
+          <ClrSysMmbId>
+            <MmbId>BANKA</MmbId>
+          </ClrSysMmbId>
+        </FinInstnId>
+      </DbtrAgt>
+      <Dbtr>
+        <Nm>Jan Kowalski</Nm>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <Othr>
+            <Id>111122223333</Id>
+          </Othr>
+        </Id>
+      </DbtrAcct>
+      
+      <CdtrAgt>
+        <FinInstnId>
+          <ClrSysMmbId>
+            <MmbId>BANKB</MmbId>
+          </ClrSysMmbId>
+        </FinInstnId>
+      </CdtrAgt>
+      <Cdtr>
+        <Nm>John Doe</Nm>
+      </Cdtr>
+      <CdtrAcct>
+        <Id>
+          <Othr>
+            <Id>999988887777</Id>
           </Othr>
         </Id>
       </CdtrAcct>
@@ -797,131 +1103,453 @@ Injects liquidity into selected bank.
 
 ---
 
-# RTP response statuses
+# 3 RTP Validation
 
-| Status | Description |
-|---|---|
-| `ACCEPTED` | Transaction settled successfully |
-| `GRIDLOCK_QUEUED` | Transaction queued due to insufficient liquidity |
-| `REJECTED` | Bank is blocked |
-| `DUPLICATE` | Duplicate transaction detected |
+The RTP system validates:
+
+- XML schema,
+- API key,
+- sender bank,
+- receiver bank,
+- duplicate transactions,
+- liquidity,
+- supported currency,
+- blocked status.
 
 ---
 
-## Successful settlement
+# 4 RTP Technical Acceptance
+
+If validation succeeds:
+
+## Response
+
+```http
+202 Accepted
+```
+
+## Returned `pacs.002`
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+  <Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.002.001.10">
+    <FIToFIPmtStsRpt>
+      <GrpHdr>
+        <MsgId>MSG-20260529-3934F7B7</MsgId>
+        <CreDtTm>2026-05-29T00:08:38</CreDtTm>
+        <InstgAgt>
+          <FinInstnId>
+            <Nm>BANKA</Nm>
+          </FinInstnId>
+        </InstgAgt>
+        <InstdAgt>
+          <FinInstnId>
+            <Nm>BANKB</Nm>
+          </FinInstnId>
+        </InstdAgt>
+      </GrpHdr>
+      <OrgnlGrpInfAndSts>
+        <OrgnlMsgId>MSG-2026-0001</OrgnlMsgId>
+        <GrpSts>ACTC</GrpSts>
+      </OrgnlGrpInfAndSts>
+      <TxInfAndSts>
+        <OrgnlEndToEndId>E2E-TEST-0002</OrgnlEndToEndId>
+        <TxSts>ACTC</TxSts>
+        <AcctSvcrRef>REF-20260529-CC4FF941</AcctSvcrRef>
+        <OrgnlTxRef>
+          <IntrBkSttlmAmt Ccy="USD">150.0</IntrBkSttlmAmt>
+          <Dbtr>
+            <Nm>Jan Kowalski</Nm>
+          </Dbtr>
+          <DbtrAcct>
+            <Id>
+              <Othr>
+                <Id>111122223333</Id>
+                <SchmeNm>
+                  <Prtry>US_ACCT</Prtry>
+                </SchmeNm>
+              </Othr>
+            </Id>
+          </DbtrAcct>
+          <Cdtr>
+            <Nm>John Doe</Nm>
+          </Cdtr>
+          <CdtrAcct>
+            <Id>
+              <Othr>
+                <Id>999988887777</Id>
+                <SchmeNm>
+                  <Prtry>US_ACCT</Prtry>
+                </SchmeNm>
+              </Othr>
+            </Id>
+          </CdtrAcct>
+        </OrgnlTxRef>
+      </TxInfAndSts>
+    </FIToFIPmtStsRpt>
+  </Document>
+```
+
+Meaning:
+
+```text
+ACTC = Accepted Technical Validation
+```
+
+The transaction is now:
+
+```text
+PENDING
+```
+
+and stored inside BANKB message queue.
+
+---
+
+# 5 BANK B Fetches Incoming Payment
+
+BANK B retrieves incoming messages.
+
+## Request
+
+```http
+GET /queue/incoming
+x-api-key: key-bankb
+```
+
+## Response
 
 ```json
 {
-  "status": "ACCEPTED",
-  "message": "Settlement completed."
+  "messages": [
+    {
+      "queue_id": 1,
+      "message_id": "E2E-TEST-0001",
+      "type": "pacs.008",
+      "payload": "<xml payload>"
+    }
+  ]
 }
+```
+
+Message status changes to:
+
+```text
+FETCHED
 ```
 
 ---
 
-## Insufficient liquidity
+# 6 BANK B Confirms Settlement
 
-```json
-{
-  "status": "GRIDLOCK_QUEUED",
-  "code": "AM04",
-  "message": "Insufficient funds",
-  "queue_size": 2
-}
+BANK B processes the payment internally and confirms settlement.
+
+## Request
+
+```http
+POST /transfers/settle
+Content-Type: application/xml
+x-api-key: key-bankb
+```
+
+## XML Payload (`pacs.002`)
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+  <Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.002.001.10">
+    <FIToFIPmtStsRpt>
+      <GrpHdr>
+        <MsgId>MSG-20260529-34EB0A88</MsgId>
+        <CreDtTm>2026-05-29T01:25:05</CreDtTm>
+        <InstgAgt>
+          <FinInstnId>
+            <Nm>BANKA</Nm>
+          </FinInstnId>
+        </InstgAgt>
+        <InstdAgt>
+          <FinInstnId>
+            <Nm>BANKB</Nm>
+          </FinInstnId>
+        </InstdAgt>
+      </GrpHdr>
+      <OrgnlGrpInfAndSts>
+        <OrgnlMsgId>E2E-TEST-00991</OrgnlMsgId>
+        <GrpSts>ACTC</GrpSts>
+      </OrgnlGrpInfAndSts>
+      <TxInfAndSts>
+        <OrgnlEndToEndId>E2E-TEST-00991</OrgnlEndToEndId>
+        <TxSts>ACTC</TxSts>
+        <AcctSvcrRef>REF-20260529-463616B9</AcctSvcrRef>
+        <OrgnlTxRef>
+          <IntrBkSttlmAmt Ccy="USD">150.0</IntrBkSttlmAmt>
+          <Dbtr>
+            <Nm>Jan Kowalski</Nm>
+          </Dbtr>
+          <DbtrAcct>
+            <Id>
+              <Othr>
+                <Id>111122223333</Id>
+                <SchmeNm>
+                  <Prtry>US_ACCT</Prtry>
+                </SchmeNm>
+              </Othr>
+            </Id>
+          </DbtrAcct>
+          <Cdtr>
+            <Nm>John Doe</Nm>
+          </Cdtr>
+          <CdtrAcct>
+            <Id>
+              <Othr>
+                <Id>999988887777</Id>
+                <SchmeNm>
+                  <Prtry>US_ACCT</Prtry>
+                </SchmeNm>
+              </Othr>
+            </Id>
+          </CdtrAcct>
+        </OrgnlTxRef>
+      </TxInfAndSts>
+    </FIToFIPmtStsRpt>
+  </Document>
+```
+
+Meaning:
+
+```text
+ACCP = Accepted Customer Profile
 ```
 
 ---
 
-## Blocked bank
+# 7 Final Settlement
 
-```json
-{
-  "status": "REJECTED",
-  "code": "AM03",
-  "message": "Blocked account"
-}
+The RTP system finalizes settlement.
+
+The system:
+
+- debits BANK A balance,
+- credits BANK B balance,
+- updates transaction status to `COMPLETED`,
+- generates settlement confirmation.
+
+## Response
+
+```http
+200 OK
+```
+
+## Transaction Status
+
+```text
+COMPLETED
 ```
 
 ---
 
-## Duplicate transfer
+# 8 Sender Bank Confirmation (BANK A)
+
+After the RTP transaction has been processed, the system sends a final status confirmation to the sender bank (BANK A) via the `message_queue` mechanism.
+
+BANK A can retrieve the status of its submitted transaction using the following endpoint:
+
+```http
+GET /queue/incoming
+x-api-key: key-banka
+```
+Example Response – Successful Transaction (COMPLETED)
 
 ```json
 {
-  "status": "DUPLICATE",
-  "code": "DU01",
-  "message": "Duplicate payment"
+  "messages": [
+    {
+      "queue_id": 2,
+      "message_id": "E2E-TEST-0001",
+      "type": "pacs.002",
+      "payload": "<xml status=\"COMPLETED\">...</xml>",
+      "status": "DELIVERED"
+    }
+  ]
 }
+```
+---
+
+# Example Failure Scenarios
+
+## Insufficient Liquidity
+
+If BANK A lacks liquidity:
+
+### Response
+
+```http
+202 Accepted
+```
+
+### Returned Status
+
+```xml
+<TxSts>PDNG</TxSts>
+```
+
+Meaning:
+
+```text
+PDNG = Payment queued in gridlock queue
+```
+
+The transaction is added to:
+
+```text
+gridlock_queue
 ```
 
 ---
 
-# Error codes
+## Duplicate Transaction
 
-The project implements simplified ISO 20022 error handling.
+If the same `EndToEndId` already exists:
 
-| Code | Meaning |
-|---|---|
-| `AM04` | Insufficient funds |
-| `AM03` | Blocked account |
+### Response
+
+```http
+409 Conflict
+```
+
+### Returned Status
+
+```xml
+<TxSts>RJCT</TxSts>
+```
+
+---
+
+## Blocked Bank
+
+If sender bank is blocked:
+
+### Response
+
+```http
+403 Forbidden
+```
+
+### Returned Status
+
+```xml
+<TxSts>RJCT</TxSts>
+```
+
+---
+
+## Invalid Receiver
+
+If receiver bank does not exist:
+
+### Response
+
+```http
+404 Not Found
+```
+
+### Returned Status
+
+```xml
+<TxSts>RJCT</TxSts>
+```
+
+---
+
+
+# RTP Response Statuses
+
+| Status      | Meaning                       |
+| ----------- | ----------------------------- |
+| `ACTC`      | Accepted technical validation |
+| `PDNG`      | Pending in gridlock queue     |
+| `RJCT`      | Transaction rejected          |
+| `COMPLETED` | Transaction settled           |
+| `REJECTED`  | Settlement rejected           |
+
+---
+
+# Error Codes
+
+| Code   | Meaning                  |
+| ------ | ------------------------ |
+| `AM04` | Insufficient funds       |
+| `AM03` | Blocked account          |
 | `AC03` | Invalid creditor account |
-| `DU01` | Duplicate payment |
+| `DU01` | Duplicate payment        |
 
 ---
 
-# Database models
+# Database Models
 
 # Bank
 
-| Field | Type |
-|---|---|
-| bank_code | String |
-| balance | Float |
-| debt_limit | Float |
-| status | String |
-| limit_exceeded_at | DateTime |
-| api_key | String |
+| Field               | Type     |
+| ------------------- | -------- |
+| `bank_code`         | String   |
+| `balance`           | Float    |
+| `debt_limit`        | Float    |
+| `status`            | String   |
+| `limit_exceeded_at` | DateTime |
+| `api_key`           | String   |
 
 ---
 
 # Transaction
 
-| Field | Type |
-|---|---|
-| id | Integer |
-| sender_code | String |
-| receiver_code | String |
-| amount | Float |
-| status | String |
-| message_id | String |
-| timestamp | DateTime |
-| debtor_name | String |
-| debtor_account | String |
-| creditor_name | String |
-| creditor_account | String | 
+| Field              | Type     |
+| ------------------ | -------- |
+| `id`               | Integer  |
+| `sender_code`      | String   |
+| `receiver_code`    | String   |
+| `amount`           | Float    |
+| `status`           | String   |
+| `message_id`       | String   |
+| `timestamp`        | DateTime |
+| `debtor_name`      | String   |
+| `debtor_account`   | String   |
+| `creditor_name`    | String   |
+| `creditor_account` | String   |
 
 ---
 
 # GridlockQueue
 
-| Field | Type |
-|---|---|
-| id | Integer |
-| xml_payload | String |
-| added_at | DateTime |
+| Field         | Type     |
+| ------------- | -------- |
+| `id`          | Integer  |
+| `xml_payload` | String   |
+| `added_at`    | DateTime |
 
 ---
 
 # NettingReport
 
-| Field | Type |
-|---|---|
-| id | Integer |
-| session_id | String |
-| bank_code | String |
-| net_position | Float |
-| status | String |
-| timestamp | DateTime |
+| Field          | Type     |
+| -------------- | -------- |
+| `id`           | Integer  |
+| `session_id`   | String   |
+| `bank_code`    | String   |
+| `net_position` | Float    |
+| `status`       | String   |
+| `timestamp`    | DateTime |
 
 ---
 
+# MessageQueue
+
+| Field             | Type     |
+| ----------------- | -------- |
+| `id`              | Integer  |
+| `owner_bank_code` | String   |
+| `message_type`    | String   |
+| `message_id`      | String   |
+| `payload`         | Text     |
+| `status`          | String   |
+| `created_at`      | DateTime |
+
+---
