@@ -1366,7 +1366,7 @@ Example Response – Successful Transaction (COMPLETED)
       "queue_id": 2,
       "message_id": "E2E-TEST-0001",
       "type": "pacs.002",
-      "payload": "<xml status=\"COMPLETED\">...</xml>",
+      "payload": "<xml  pacs.002 </xml>",
     }
   ]
 }
