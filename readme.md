@@ -10,6 +10,10 @@
 - [How to manage banks SFTP accounts](#how-to-manage-banks-sftp-accounts)
 - [Additional api](#additional-api)
 
+- [How to integrate: Step-by-step guide](#how-to-integrate-step-by-step-guide)
+- [Helpers](#helpers)
+- [Sessions](#sessions)
+
 ## FRB, .ACH, .ACK
 
 Default **FRB RTN: 090000515**
@@ -410,12 +414,12 @@ graph TD;
     Bank0 -->|/send| Bank0-MQ-Client;
     Bank0-MQ-Client --> FedNow-Service;
     FedNow-Service --> Bank1-MQ-Client; 
-    Bank1 -->|/incoming| Bank1-MQ-Client;
+    Bank1-MQ-Client -->|/FIFO/out| Bank1;
     Bank1 -->|/send| Bank1-MQ-Client;
     Bank1-MQ-Client --> FedNow-Service;
     FedNow-Service --> Banks-Master-Accounts
     FedNow-Service --> Bank0-MQ-Client;
-    Bank0 -->|/incoming| Bank0-MQ-Client
+    Bank0-MQ-Client -->|/FIFO/out| Bank0;
 ```
 
 To communicate with FedNow service use **dedicated client (for example Bank0-MQ-Client in chart above)** instead of direct connection.
