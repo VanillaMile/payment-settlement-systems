@@ -367,7 +367,7 @@ If the bank already exists in database it will not be overwritten.
 You'll need your username and key:
 
 * Username: Can be found either inside `.env` as `BANK0 = "baguette-bank"` or on frontend panel (http://localhost:3310/) in `REGISTERED BANKS` section. You can see details about your bank, your username is under the banks lagal name (e.g. for `Bagguette Bank` it's `baguette-bank`)
-* Key: Your key can be found in `FedSystems\SFTP_KEYS\{Your bank name}\ir_rsa` after completeing step 5. **Important:** `id_rsa` (without extension) is your private key, this is what you need to log in, you're free to take it out of this folder. `id_rsa.pub` (with extension) is your public key, it will be automatically mounted on the server so it must stay in that folder.
+* Key: Your key can be found in `FedSystems\SFTP_KEYS\{Your bank name}\ir_rsa` after completing step 5. **Important:** `id_rsa` (without extension) is your private key, this is what you need to log in, you're free to take it out of this folder. `id_rsa.pub` (with extension) is your public key, it will be automatically mounted on the server so it must stay in that folder.
 
 To log in to your sftp account you can use:
 
@@ -439,7 +439,7 @@ To communicate with FedNow service use **dedicated client (for example Bank0-MQ-
     BANK0_NET_DEBIT_CAP = 100000000 
     BANK0_INITIAL_BALANCE = 1000000000
     ```
-    If you select your bank to be `BANK0` you'd have **RTN: 040104018** and your FedNow client would be accessible via http://localhost:8770
+    If you select your bank to be `BANK0` you'd have **RTN: 040104018** and your FedNow client would be accessible with http://localhost:8770
 
     Encryption is handled internally between client and FedNow system.
 
@@ -470,7 +470,7 @@ You can primarily use these two:
 
 ### How to send file
 
-- Use http://localhost:8770/send - `POST`, accepts xml files. This is where you'd send any files you want to send to FedNow service.
+- Use http://localhost:8770/send - `POST`, accepts xml files. This is where you send files to FedNow service.
 - Files are automatically renamed to {BANK_RTN}_DATE_TIME_XXXX.xml"
 
 ### How to recive file
@@ -478,7 +478,7 @@ You can primarily use these two:
     - Use http://localhost:8770/FIFO/out - If no files are available in queue returns `404 - No files in queue`, if files are in queue returns oldest file, and removes file from queue. Files are moved to `/collected` for future recovery.
 - Method 2:
     - Use http://localhost:8770/incoming/{filename} to fetch specific file from incoming.
-    - Requires user to manually track files and move files out of queue with http://localhost:8770/mark-failed/{filename} or http://localhost:8770/mark-collected/{filename}
+    - Requires user to manually track files and move them out of queue with http://localhost:8770/mark-failed/{filename} or http://localhost:8770/mark-collected/{filename}
 
 # RTP System
 
