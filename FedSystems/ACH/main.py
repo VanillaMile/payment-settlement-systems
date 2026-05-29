@@ -10,6 +10,7 @@ import shutil
 import json
 import base64
 from datetime import datetime
+import time
 import psycopg2
 import psycopg2.extras
 from dotenv import load_dotenv
@@ -35,6 +36,281 @@ if not os.path.exists(collected_dir):
 archive_dir = "archive"
 if not os.path.exists(archive_dir):
     os.makedirs(archive_dir)
+
+# Automated bank configuration on startup variables
+BANK0 = os.environ.get("BANK0", "baguette-bank")
+BANK1 = os.environ.get("BANK1", "leek-bank")
+BANK2 = os.environ.get("BANK2", "bank-of-the-onion")
+BANK3 = os.environ.get("BANK3", "croissant-bank")
+BANK4 = os.environ.get("BANK4", "donut-bank")
+BANK5 = os.environ.get("BANK5", "coffee-bank")
+
+BANK0_RTN = os.environ.get("BANK0_RTN", "040104018")
+BANK1_RTN = os.environ.get("BANK1_RTN", "010101012")
+BANK2_RTN = os.environ.get("BANK2_RTN", "910310314")
+BANK3_RTN = os.environ.get("BANK3_RTN", "514310008")
+BANK4_RTN = os.environ.get("BANK4_RTN", "888777885")
+BANK5_RTN = os.environ.get("BANK5_RTN", "666777667")
+
+BANK0_MRTN = os.environ.get("BANK0_MRTN", BANK0_RTN)
+BANK1_MRTN = os.environ.get("BANK1_MRTN", BANK1_RTN)
+BANK2_MRTN = os.environ.get("BANK2_MRTN", BANK2_RTN)
+BANK3_MRTN = os.environ.get("BANK3_MRTN", BANK3_RTN)
+BANK4_MRTN = os.environ.get("BANK4_MRTN", BANK4_RTN)
+BANK5_MRTN = os.environ.get("BANK5_MRTN", BANK5_RTN)
+
+BANK0_LEGAL_NAME = os.environ.get("BANK0_LEGAL_NAME", "Baguette Bank")
+BANK1_LEGAL_NAME = os.environ.get("BANK1_LEGAL_NAME", "Leek Bank")
+BANK2_LEGAL_NAME = os.environ.get("BANK2_LEGAL_NAME", "Bank of the Onion")
+BANK3_LEGAL_NAME = os.environ.get("BANK3_LEGAL_NAME", "Croissant Bank")
+BANK4_LEGAL_NAME = os.environ.get("BANK4_LEGAL_NAME", "Donut Bank")
+BANK5_LEGAL_NAME = os.environ.get("BANK5_LEGAL_NAME", "Coffee Bank")
+
+BANK0_FEIN = os.environ.get("BANK0_FEIN", "123456789")
+BANK1_FEIN = os.environ.get("BANK1_FEIN", "987654321")
+BANK2_FEIN = os.environ.get("BANK2_FEIN", "555555555")
+BANK3_FEIN = os.environ.get("BANK3_FEIN", "111111111")
+BANK4_FEIN = os.environ.get("BANK4_FEIN", "222222222")
+BANK5_FEIN = os.environ.get("BANK5_FEIN", "333333333")
+
+BANK0_NET_DEBIT_CAP = int(os.environ.get("BANK0_NET_DEBIT_CAP", "100000000"))
+BANK1_NET_DEBIT_CAP = int(os.environ.get("BANK1_NET_DEBIT_CAP", "100000000"))
+BANK2_NET_DEBIT_CAP = int(os.environ.get("BANK2_NET_DEBIT_CAP", "100000000"))
+BANK3_NET_DEBIT_CAP = int(os.environ.get("BANK3_NET_DEBIT_CAP", "100000000"))
+BANK4_NET_DEBIT_CAP = int(os.environ.get("BANK4_NET_DEBIT_CAP", "100000000"))
+BANK5_NET_DEBIT_CAP = int(os.environ.get("BANK5_NET_DEBIT_CAP", "100000000"))
+
+BANK0_INITIAL_BALANCE = int(os.environ.get("BANK0_INITIAL_BALANCE", "1000000000"))
+BANK1_INITIAL_BALANCE = int(os.environ.get("BANK1_INITIAL_BALANCE", "1000000000"))
+BANK2_INITIAL_BALANCE = int(os.environ.get("BANK2_INITIAL_BALANCE", "1000000000"))
+BANK3_INITIAL_BALANCE = int(os.environ.get("BANK3_INITIAL_BALANCE", "1000000000"))
+BANK4_INITIAL_BALANCE = int(os.environ.get("BANK4_INITIAL_BALANCE", "1000000000"))
+BANK5_INITIAL_BALANCE = int(os.environ.get("BANK5_INITIAL_BALANCE", "1000000000"))
+
+
+def seed_bank_to_database(db_url, bank_config, initial_sender_rtn):
+    conn = None
+    cur = None
+    try:
+        max_attempts = int(os.environ.get("AUTOMATED_CONFIG_DB_RETRIES", "30"))
+        retry_delay_seconds = float(os.environ.get("AUTOMATED_CONFIG_DB_RETRY_DELAY_SECONDS", "2"))
+
+        last_error = None
+        for attempt in range(1, max_attempts + 1):
+            try:
+                conn = psycopg2.connect(db_url, connect_timeout=5)
+                break
+            except Exception as exc:
+                last_error = exc
+                if attempt >= max_attempts:
+                    raise
+                logger.warning(
+                    "Postgres not ready yet for %s (%s); retrying in %ss (%s/%s)",
+                    bank_config["sftp_username"],
+                    bank_config["primary_routing_transit_number"],
+                    retry_delay_seconds,
+                    attempt,
+                    max_attempts,
+                )
+                time.sleep(retry_delay_seconds)
+
+        if conn is None:
+            raise last_error or RuntimeError("Could not connect to Postgres")
+
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        cur.execute(
+            """
+            SELECT 1
+            FROM bank_details
+            WHERE primary_routing_transit_number = %s
+            """,
+            (bank_config["primary_routing_transit_number"],),
+        )
+        if cur.fetchone() is not None:
+            logger.info(
+                "Skipping seed for %s (%s) because it already exists",
+                bank_config["sftp_username"],
+                bank_config["primary_routing_transit_number"],
+            )
+            return False
+
+        cur.execute(
+            """
+            INSERT INTO bank_details (
+                primary_routing_transit_number,
+                legal_name,
+                federal_employer_identification_number,
+                master_account_rtn,
+                net_debit_cap,
+                sftp_username,
+                server_certificate_expiry
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            RETURNING *
+            """,
+            (
+                bank_config["primary_routing_transit_number"],
+                bank_config["legal_name"],
+                bank_config["federal_employer_identification_number"],
+                bank_config["master_account_rtn"],
+                bank_config["net_debit_cap"],
+                bank_config["sftp_username"],
+                bank_config["server_certificate_expiry"],
+            ),
+        )
+
+        cur.execute(
+            """
+            INSERT INTO ach_participants (primary_routing_transit_number, type, restricted)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (primary_routing_transit_number) DO UPDATE
+              SET type = EXCLUDED.type,
+                  restricted = EXCLUDED.restricted
+            """,
+            (
+                bank_config["primary_routing_transit_number"],
+                "both",
+                0,
+            ),
+        )
+
+        initial_balance = int(bank_config.get("initial_balance", 0) or 0)
+        if initial_balance > 0:
+            cur.execute("LOCK TABLE central_ledger_entries IN EXCLUSIVE MODE")
+            cur.execute("SELECT COALESCE(MAX(entry_id), 0) AS max_id FROM central_ledger_entries")
+            next_entry_id = cur.fetchone()["max_id"] + 1
+
+            cur.execute(
+                """
+                INSERT INTO central_ledger_entries (
+                    entry_id,
+                    master_account_rtn,
+                    activity_source_rtn,
+                    amount_cents,
+                    rail_type,
+                    external_ref_id,
+                    effective_date
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                RETURNING *
+                """,
+                (
+                    next_entry_id,
+                    bank_config["master_account_rtn"],
+                    initial_sender_rtn,
+                    float(initial_balance),
+                    "FedWire",
+                    f"INITIAL_BALANCE:{bank_config['sftp_username']}",
+                    datetime.utcnow().date().isoformat(),
+                ),
+            )
+
+            cur.execute(
+                """
+                INSERT INTO running_balance (master_account_rtn, current_running_balance, last_updated_at)
+                VALUES (%s, %s, NOW())
+                ON CONFLICT (master_account_rtn) DO UPDATE
+                  SET current_running_balance = running_balance.current_running_balance + EXCLUDED.current_running_balance,
+                      last_updated_at = NOW()
+                """,
+                (bank_config["master_account_rtn"], initial_balance),
+            )
+
+        conn.commit()
+        logger.info(
+            "Seeded bank %s (%s) into database",
+            bank_config["sftp_username"],
+            bank_config["primary_routing_transit_number"],
+        )
+        return True
+    except Exception:
+        if conn is not None:
+            conn.rollback()
+        logger.exception(
+            "Failed to seed bank %s into database",
+            bank_config.get("sftp_username"),
+        )
+        return False
+    finally:
+        if cur is not None:
+            cur.close()
+        if conn is not None:
+            conn.close()
+
+
+BANK_SEED_CONFIGS = [
+    {
+        "primary_routing_transit_number": BANK0_RTN,
+        "legal_name": BANK0_LEGAL_NAME,
+        "federal_employer_identification_number": BANK0_FEIN,
+        "master_account_rtn": BANK0_MRTN,
+        "net_debit_cap": BANK0_NET_DEBIT_CAP,
+        "sftp_username": BANK0,
+        "server_certificate_expiry": None,
+        "initial_balance": BANK0_INITIAL_BALANCE,
+    },
+    {
+        "primary_routing_transit_number": BANK1_RTN,
+        "legal_name": BANK1_LEGAL_NAME,
+        "federal_employer_identification_number": BANK1_FEIN,
+        "master_account_rtn": BANK1_MRTN,
+        "net_debit_cap": BANK1_NET_DEBIT_CAP,
+        "sftp_username": BANK1,
+        "server_certificate_expiry": None,
+        "initial_balance": BANK1_INITIAL_BALANCE,
+    },
+    {
+        "primary_routing_transit_number": BANK2_RTN,
+        "legal_name": BANK2_LEGAL_NAME,
+        "federal_employer_identification_number": BANK2_FEIN,
+        "master_account_rtn": BANK2_MRTN,
+        "net_debit_cap": BANK2_NET_DEBIT_CAP,
+        "sftp_username": BANK2,
+        "server_certificate_expiry": None,
+        "initial_balance": BANK2_INITIAL_BALANCE,
+    },
+    {
+        "primary_routing_transit_number": BANK3_RTN,
+        "legal_name": BANK3_LEGAL_NAME,
+        "federal_employer_identification_number": BANK3_FEIN,
+        "master_account_rtn": BANK3_MRTN,
+        "net_debit_cap": BANK3_NET_DEBIT_CAP,
+        "sftp_username": BANK3,
+        "server_certificate_expiry": None,
+        "initial_balance": BANK3_INITIAL_BALANCE,
+    },
+    {
+        "primary_routing_transit_number": BANK4_RTN,
+        "legal_name": BANK4_LEGAL_NAME,
+        "federal_employer_identification_number": BANK4_FEIN,
+        "master_account_rtn": BANK4_MRTN,
+        "net_debit_cap": BANK4_NET_DEBIT_CAP,
+        "sftp_username": BANK4,
+        "server_certificate_expiry": None,
+        "initial_balance": BANK4_INITIAL_BALANCE,
+    },
+    {
+        "primary_routing_transit_number": BANK5_RTN,
+        "legal_name": BANK5_LEGAL_NAME,
+        "federal_employer_identification_number": BANK5_FEIN,
+        "master_account_rtn": BANK5_MRTN,
+        "net_debit_cap": BANK5_NET_DEBIT_CAP,
+        "sftp_username": BANK5,
+        "server_certificate_expiry": None,
+        "initial_balance": BANK5_INITIAL_BALANCE,
+    },
+]
+
+
+if os.environ.get("AUTOMATED_CONFIG") == "true":
+    automated_db_url = os.environ.get("DATABASE_URL")
+    if not automated_db_url:
+        logger.warning("AUTOMATED_CONFIG is enabled but DATABASE_URL is not set; skipping bank seeding")
+    else:
+        for bank_config in BANK_SEED_CONFIGS:
+            seed_bank_to_database(automated_db_url, bank_config, FRB_ROUTING_NUMBER)
+    
 
 class AddAchBankRequest(BaseModel):
     primary_routing_transit_number: str
@@ -867,10 +1143,11 @@ def collect_inbound_files():
     # What to do as bank:
 
     - Create .ach file
-    - Place it into your bank's inbound folder (for example `sftp_data/BANK0/inbound/`)
+    - Place it into your bank's inbound folder (for example `sftp_data/baguette-bank/inbound/`)
     - Run this endpoint to collect files.
-    - You should find .ack file in your bank's outbound folder (for example `sftp_data/BANK0/outbound/`) with validation results. If successful, your .ach will be processed in next session.
+    - You should find .ack file in your bank's outbound folder (for example `sftp_data/baguette-bank/outbound/`) with validation results. If successful, your .ach will be processed in next session.
 
+    What endpoint this does:
     - Scans the mounted SFTP data directory (default `/app/sftp_data`).
     - Validates the file, sends .ack to the bank's outbound folder.
         - If validation fails, sends an .ack file with error details and deletes failed .ach file.

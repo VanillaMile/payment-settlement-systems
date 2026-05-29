@@ -27,7 +27,7 @@ goto end
 
 :opt2
 echo You selected to start all services. Starting Docker containers...
-docker-compose up -d
+docker-compose up -d --build
 pause
 goto end
 

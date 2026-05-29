@@ -44,6 +44,49 @@ services:
       - VITE_PORT=${VITE_PORT}
       - FRB_ROUTING_NUMBER=${FRB_ROUTING_NUMBER}
       - FRB_LEGAL_NAME=${FRB_LEGAL_NAME}
+      - AUTOMATED_CONFIG=${AUTOMATED_CONFIG}
+      - BANK0=${BANK0}
+      - BANK1=${BANK1}
+      - BANK2=${BANK2}
+      - BANK3=${BANK3}
+      - BANK4=${BANK4}
+      - BANK5=${BANK5}
+      - BANK0_RTN=${BANK0_RTN}
+      - BANK1_RTN=${BANK1_RTN}
+      - BANK2_RTN=${BANK2_RTN}
+      - BANK3_RTN=${BANK3_RTN}
+      - BANK4_RTN=${BANK4_RTN}
+      - BANK5_RTN=${BANK5_RTN}
+      - BANK0_MRTN=${BANK0_MRTN}
+      - BANK1_MRTN=${BANK1_MRTN}
+      - BANK2_MRTN=${BANK2_MRTN}
+      - BANK3_MRTN=${BANK3_MRTN}
+      - BANK4_MRTN=${BANK4_MRTN}
+      - BANK5_MRTN=${BANK5_MRTN}
+      - BANK0_LEGAL_NAME=${BANK0_LEGAL_NAME}
+      - BANK1_LEGAL_NAME=${BANK1_LEGAL_NAME}
+      - BANK2_LEGAL_NAME=${BANK2_LEGAL_NAME}
+      - BANK3_LEGAL_NAME=${BANK3_LEGAL_NAME}
+      - BANK4_LEGAL_NAME=${BANK4_LEGAL_NAME}
+      - BANK5_LEGAL_NAME=${BANK5_LEGAL_NAME}
+      - BANK0_FEIN=${BANK0_FEIN}
+      - BANK1_FEIN=${BANK1_FEIN}
+      - BANK2_FEIN=${BANK2_FEIN}
+      - BANK3_FEIN=${BANK3_FEIN}
+      - BANK4_FEIN=${BANK4_FEIN}
+      - BANK5_FEIN=${BANK5_FEIN}
+      - BANK0_NET_DEBIT_CAP=${BANK0_NET_DEBIT_CAP}
+      - BANK1_NET_DEBIT_CAP=${BANK1_NET_DEBIT_CAP}
+      - BANK2_NET_DEBIT_CAP=${BANK2_NET_DEBIT_CAP}
+      - BANK3_NET_DEBIT_CAP=${BANK3_NET_DEBIT_CAP}
+      - BANK4_NET_DEBIT_CAP=${BANK4_NET_DEBIT_CAP}
+      - BANK5_NET_DEBIT_CAP=${BANK5_NET_DEBIT_CAP}
+      - BANK0_INITIAL_BALANCE=${BANK0_INITIAL_BALANCE}
+      - BANK1_INITIAL_BALANCE=${BANK1_INITIAL_BALANCE}
+      - BANK2_INITIAL_BALANCE=${BANK2_INITIAL_BALANCE}
+      - BANK3_INITIAL_BALANCE=${BANK3_INITIAL_BALANCE}
+      - BANK4_INITIAL_BALANCE=${BANK4_INITIAL_BALANCE}
+      - BANK5_INITIAL_BALANCE=${BANK5_INITIAL_BALANCE}
     depends_on:
       - postgres
     volumes:
@@ -66,10 +109,14 @@ services:
       - MQ_BANK1_RTN=${BANK1_RTN}
       - MQ_BANK2_RTN=${BANK2_RTN}
       - MQ_BANK3_RTN=${BANK3_RTN}
+      - MQ_BANK4_RTN=${BANK4_RTN}
+      - MQ_BANK5_RTN=${BANK5_RTN}
       - MQ_BANK0_URL=http://message-queue-bank0-client:8000
       - MQ_BANK1_URL=http://message-queue-bank1-client:8000
       - MQ_BANK2_URL=http://message-queue-bank2-client:8000
       - MQ_BANK3_URL=http://message-queue-bank3-client:8000
+      - MQ_BANK4_URL=http://message-queue-bank4-client:8000
+      - MQ_BANK5_URL=http://message-queue-bank5-client:8000
     depends_on:
       - postgres
     volumes:
@@ -88,10 +135,12 @@ services:
       - ./SFTP_Keys/${BANK1}/id_rsa.pub:/home/${BANK1}/.ssh/keys/id_rsa.pub:ro
       - ./SFTP_Keys/${BANK2}/id_rsa.pub:/home/${BANK2}/.ssh/keys/id_rsa.pub:ro
       - ./SFTP_Keys/${BANK3}/id_rsa.pub:/home/${BANK3}/.ssh/keys/id_rsa.pub:ro
+      - ./SFTP_Keys/${BANK4}/id_rsa.pub:/home/${BANK4}/.ssh/keys/id_rsa.pub:ro
+      - ./SFTP_Keys/${BANK5}/id_rsa.pub:/home/${BANK5}/.ssh/keys/id_rsa.pub:ro
       - ./sftp_set_perms.sh:/etc/sftp.d/set_perms.sh:ro
     environment:
     # Add new banks here: <username>::<uid>:<gid>:inbound,outbound
-      - SFTP_USERS=${BANK0}::1000:1000:inbound,outbound ${BANK1}::1001:1001:inbound,outbound ${BANK2}::1002:1002:inbound,outbound ${BANK3}::1003:1003:inbound,outbound
+      - SFTP_USERS=${BANK0}::1000:1000:inbound,outbound ${BANK1}::1001:1001:inbound,outbound ${BANK2}::1002:1002:inbound,outbound ${BANK3}::1003:1003:inbound,outbound ${BANK4}::1004:1004:inbound,outbound ${BANK5}::1005:1005:inbound,outbound
 
   frontend:
     build:
@@ -153,6 +202,30 @@ services:
       - FRB_LEGAL_NAME=${FRB_LEGAL_NAME}
       - MQ_BANK_NAME=${BANK3}
       - MQ_BANK_RTN=${BANK3_RTN}
+
+  message-queue-bank4-client:
+    <<: *message-queue-base
+    ports:
+      - "${MQ_BANK4_PORT}:8000"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - FEDNOW_API_BASE_URL=http://fednow-backend:8000
+      - FRB_ROUTING_NUMBER=${FRB_ROUTING_NUMBER}
+      - FRB_LEGAL_NAME=${FRB_LEGAL_NAME}
+      - MQ_BANK_NAME=${BANK4}
+      - MQ_BANK_RTN=${BANK4_RTN}
+
+  message-queue-bank5-client:
+    <<: *message-queue-base
+    ports:
+      - "${MQ_BANK5_PORT}:8000"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - FEDNOW_API_BASE_URL=http://fednow-backend:8000
+      - FRB_ROUTING_NUMBER=${FRB_ROUTING_NUMBER}
+      - FRB_LEGAL_NAME=${FRB_LEGAL_NAME}
+      - MQ_BANK_NAME=${BANK5}
+      - MQ_BANK_RTN=${BANK5_RTN}
 
 volumes:
   postgres_data:
