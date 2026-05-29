@@ -10,6 +10,7 @@ import shutil
 import json
 import base64
 from datetime import datetime
+import time
 import psycopg2
 import psycopg2.extras
 from dotenv import load_dotenv
@@ -87,12 +88,52 @@ BANK4_INITIAL_BALANCE = int(os.environ.get("BANK4_INITIAL_BALANCE", "1000000000"
 BANK5_INITIAL_BALANCE = int(os.environ.get("BANK5_INITIAL_BALANCE", "1000000000"))
 
 
-def seed_bank_to_database(db_url, bank_config):
+def seed_bank_to_database(db_url, bank_config, initial_sender_rtn):
     conn = None
     cur = None
     try:
-        conn = psycopg2.connect(db_url, connect_timeout=5)
+        max_attempts = int(os.environ.get("AUTOMATED_CONFIG_DB_RETRIES", "30"))
+        retry_delay_seconds = float(os.environ.get("AUTOMATED_CONFIG_DB_RETRY_DELAY_SECONDS", "2"))
+
+        last_error = None
+        for attempt in range(1, max_attempts + 1):
+            try:
+                conn = psycopg2.connect(db_url, connect_timeout=5)
+                break
+            except Exception as exc:
+                last_error = exc
+                if attempt >= max_attempts:
+                    raise
+                logger.warning(
+                    "Postgres not ready yet for %s (%s); retrying in %ss (%s/%s)",
+                    bank_config["sftp_username"],
+                    bank_config["primary_routing_transit_number"],
+                    retry_delay_seconds,
+                    attempt,
+                    max_attempts,
+                )
+                time.sleep(retry_delay_seconds)
+
+        if conn is None:
+            raise last_error or RuntimeError("Could not connect to Postgres")
+
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        cur.execute(
+            """
+            SELECT 1
+            FROM bank_details
+            WHERE primary_routing_transit_number = %s
+            """,
+            (bank_config["primary_routing_transit_number"],),
+        )
+        if cur.fetchone() is not None:
+            logger.info(
+                "Skipping seed for %s (%s) because it already exists",
+                bank_config["sftp_username"],
+                bank_config["primary_routing_transit_number"],
+            )
+            return False
 
         cur.execute(
             """
@@ -106,13 +147,6 @@ def seed_bank_to_database(db_url, bank_config):
                 server_certificate_expiry
             )
             VALUES (%s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (primary_routing_transit_number) DO UPDATE
-              SET legal_name = EXCLUDED.legal_name,
-                  federal_employer_identification_number = EXCLUDED.federal_employer_identification_number,
-                  master_account_rtn = EXCLUDED.master_account_rtn,
-                  net_debit_cap = EXCLUDED.net_debit_cap,
-                  sftp_username = EXCLUDED.sftp_username,
-                  server_certificate_expiry = EXCLUDED.server_certificate_expiry
             RETURNING *
             """,
             (
@@ -141,12 +175,55 @@ def seed_bank_to_database(db_url, bank_config):
             ),
         )
 
+        initial_balance = int(bank_config.get("initial_balance", 0) or 0)
+        if initial_balance > 0:
+            cur.execute("LOCK TABLE central_ledger_entries IN EXCLUSIVE MODE")
+            cur.execute("SELECT COALESCE(MAX(entry_id), 0) AS max_id FROM central_ledger_entries")
+            next_entry_id = cur.fetchone()["max_id"] + 1
+
+            cur.execute(
+                """
+                INSERT INTO central_ledger_entries (
+                    entry_id,
+                    master_account_rtn,
+                    activity_source_rtn,
+                    amount_cents,
+                    rail_type,
+                    external_ref_id,
+                    effective_date
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                RETURNING *
+                """,
+                (
+                    next_entry_id,
+                    bank_config["master_account_rtn"],
+                    initial_sender_rtn,
+                    float(initial_balance),
+                    "FedWire",
+                    f"INITIAL_BALANCE:{bank_config['sftp_username']}",
+                    datetime.utcnow().date().isoformat(),
+                ),
+            )
+
+            cur.execute(
+                """
+                INSERT INTO running_balance (master_account_rtn, current_running_balance, last_updated_at)
+                VALUES (%s, %s, NOW())
+                ON CONFLICT (master_account_rtn) DO UPDATE
+                  SET current_running_balance = running_balance.current_running_balance + EXCLUDED.current_running_balance,
+                      last_updated_at = NOW()
+                """,
+                (bank_config["master_account_rtn"], initial_balance),
+            )
+
         conn.commit()
         logger.info(
             "Seeded bank %s (%s) into database",
             bank_config["sftp_username"],
             bank_config["primary_routing_transit_number"],
         )
+        return True
     except Exception:
         if conn is not None:
             conn.rollback()
@@ -154,6 +231,7 @@ def seed_bank_to_database(db_url, bank_config):
             "Failed to seed bank %s into database",
             bank_config.get("sftp_username"),
         )
+        return False
     finally:
         if cur is not None:
             cur.close()
@@ -170,6 +248,7 @@ BANK_SEED_CONFIGS = [
         "net_debit_cap": BANK0_NET_DEBIT_CAP,
         "sftp_username": BANK0,
         "server_certificate_expiry": None,
+        "initial_balance": BANK0_INITIAL_BALANCE,
     },
     {
         "primary_routing_transit_number": BANK1_RTN,
@@ -179,6 +258,7 @@ BANK_SEED_CONFIGS = [
         "net_debit_cap": BANK1_NET_DEBIT_CAP,
         "sftp_username": BANK1,
         "server_certificate_expiry": None,
+        "initial_balance": BANK1_INITIAL_BALANCE,
     },
     {
         "primary_routing_transit_number": BANK2_RTN,
@@ -188,6 +268,7 @@ BANK_SEED_CONFIGS = [
         "net_debit_cap": BANK2_NET_DEBIT_CAP,
         "sftp_username": BANK2,
         "server_certificate_expiry": None,
+        "initial_balance": BANK2_INITIAL_BALANCE,
     },
     {
         "primary_routing_transit_number": BANK3_RTN,
@@ -197,6 +278,7 @@ BANK_SEED_CONFIGS = [
         "net_debit_cap": BANK3_NET_DEBIT_CAP,
         "sftp_username": BANK3,
         "server_certificate_expiry": None,
+        "initial_balance": BANK3_INITIAL_BALANCE,
     },
     {
         "primary_routing_transit_number": BANK4_RTN,
@@ -206,6 +288,7 @@ BANK_SEED_CONFIGS = [
         "net_debit_cap": BANK4_NET_DEBIT_CAP,
         "sftp_username": BANK4,
         "server_certificate_expiry": None,
+        "initial_balance": BANK4_INITIAL_BALANCE,
     },
     {
         "primary_routing_transit_number": BANK5_RTN,
@@ -215,6 +298,7 @@ BANK_SEED_CONFIGS = [
         "net_debit_cap": BANK5_NET_DEBIT_CAP,
         "sftp_username": BANK5,
         "server_certificate_expiry": None,
+        "initial_balance": BANK5_INITIAL_BALANCE,
     },
 ]
 
@@ -225,7 +309,7 @@ if os.environ.get("AUTOMATED_CONFIG") == "true":
         logger.warning("AUTOMATED_CONFIG is enabled but DATABASE_URL is not set; skipping bank seeding")
     else:
         for bank_config in BANK_SEED_CONFIGS:
-            seed_bank_to_database(automated_db_url, bank_config)
+            seed_bank_to_database(automated_db_url, bank_config, FRB_ROUTING_NUMBER)
     
 
 class AddAchBankRequest(BaseModel):
