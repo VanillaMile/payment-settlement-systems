@@ -164,6 +164,9 @@ async def process_transfer(
         
         # Ekstrakcja danych
         data = extract_rtp_data(xml_data)
+        
+        data["sender_name"] = current_bank.bank_code
+        data["receiver_name"] = data["receiver_code"]
         amount = data["amount"]
         currency = data["currency"]
         sender_code = data["sender_code"]
