@@ -1143,10 +1143,11 @@ def collect_inbound_files():
     # What to do as bank:
 
     - Create .ach file
-    - Place it into your bank's inbound folder (for example `sftp_data/BANK0/inbound/`)
+    - Place it into your bank's inbound folder (for example `sftp_data/baguette-bank/inbound/`)
     - Run this endpoint to collect files.
-    - You should find .ack file in your bank's outbound folder (for example `sftp_data/BANK0/outbound/`) with validation results. If successful, your .ach will be processed in next session.
+    - You should find .ack file in your bank's outbound folder (for example `sftp_data/baguette-bank/outbound/`) with validation results. If successful, your .ach will be processed in next session.
 
+    What endpoint this does:
     - Scans the mounted SFTP data directory (default `/app/sftp_data`).
     - Validates the file, sends .ack to the bank's outbound folder.
         - If validation fails, sends an .ack file with error details and deletes failed .ach file.
