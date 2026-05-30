@@ -783,7 +783,7 @@ function SessionsPage() {
                     ? 'Collecting...'
                     : cooldownRemaining > 0
                       ? `Collect (${cooldownRemaining}s)`
-                      : 'Callect'}
+                      : 'Collect'}
                 </button>
               </div>
             </div>
@@ -791,7 +791,7 @@ function SessionsPage() {
             <div className="card-body px-3 px-lg-4 pb-4 pt-3">
               {collectError ? <div className="alert alert-danger mb-3">{collectError}</div> : null}
               <pre className="mb-0 p-3 rounded-3 bg-dark text-light small overflow-auto" style={{ minHeight: '14rem', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                {collectResult || 'Click Callect to run the backend collect endpoint and print the raw JSON response here.'}
+                {collectResult || 'Click Collect to run the backend collect endpoint and print the raw JSON response here.'}
               </pre>
             </div>
           </div>

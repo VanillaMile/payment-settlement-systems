@@ -10,6 +10,10 @@
 - [How to manage banks SFTP accounts](#how-to-manage-banks-sftp-accounts)
 - [Additional api](#additional-api)
 
+- [How to integrate: Step-by-step guide](#how-to-integrate-step-by-step-guide)
+- [Helpers](#helpers)
+- [Sessions](#sessions)
+
 ## FRB, .ACH, .ACK
 
 Default **FRB RTN: 090000515**
@@ -102,17 +106,46 @@ Prerequisites:
 - Docker
 - ssh-keygen (Usually included with git for windows, test `ssh-keygen` in terminal)
 
-1. (Only once) Open `.env` and fill in:
-    - Postgres data
-    - Banks SFTP accounts (Change the names to what you want or leave as is) (for adding or removing banks see [How to manage banks SFTP accounts](#how-to-manage-banks-sftp-accounts)) (Having more SFTP accounts than banks isn't a problem, for a bank to use ACH network a separate registration is required)
+0. (Only once) copy `.env.example` to `.env`
 
-2. Start `start.bat` and select option 1. Generate SFTP keys (if not yet generated)
+```bash
+copy .env.example .env
+```
+or
+```bash
+cp .env.example .env
+```
+
+1. (Only once) Open `.env` and edit parts you want to change (instead of creating a new bank, edit the existing ones. For new bank creation look at [How to manage banks SFTP accounts](#how-to-manage-banks-sftp-accounts)):
+    ```python
+    AUTOMATED_CONFIG=true # Allows banks automated setup.
+
+    MQ_BANK0_PORT = 8770 # Port for your FedNoW MQ Client
+    BANK0 = "baguette-bank" # SFTP username for Bank 0 (must be lowercase and use '-' instead of spaces)
+    BANK0_RTN = "040104018" # RTN must be a valid one, check readme for details.
+    BANK0_MRTN = "040104018" # Master RTN, usally the same as RTN but can differ for some banks (When multiple banks share the same master account)
+    BANK0_LEGAL_NAME = "Baguette Bank"
+    BANK0_FEIN = "123456789" # 9 digit Federal Employer Identification Number (it's not the same as RTN)
+    BANK0_NET_DEBIT_CAP = 100000000 # Optional: Set a net debit cap for this bank in cents (e.g., 100000000 for $1,000,000.00). If not set, there will be no cap.
+    BANK0_INITIAL_BALANCE = 1000000000 # Optional: Set an initial balance for this bank in cents (e.g., 1000000000 for $10,000,000.00). If not set, the bank will start with a zero balance.
+    ```
+
+2. Start `start.bat` and select option 1. Generate SFTP keys (if not yet generated) or run:
+    ```bash
+    python generate_keys.py
+    ```
 
 3. Start docker engine(Can by started by running docker desktop).
 
-4. Start `start.bat` and select option 2. Start all services, or run `docker-compose up --build` from `./FedSystems`
+4. Start `start.bat` and select option 2. Start all services, or run `docker-compose up --build` from `./FedSystems` or run:
+
+    ```bash
+    docker-compose up --build
+    ```
 
 ## How to register a bank
+
+If automated setup(inside `.env`) is enabled this will be done automatically on first start-up.
 
 0. Start the server [How to start up the server](#how-to-start-up-the-server)
 1. Go to frontend control panel (default url is http://localhost:3310/ `REACT_PORT` in `.env`)
@@ -156,16 +189,19 @@ In your bank account SFTP home directory you'll find:
 
 1. Add a new `.env` variable (increment) like:
 ```python
-BANK0 = "baguette-bank"
-BANK1 = "leek-bank"
-BANK2 = "bank-of-the-onion"
-BANK3 = "croissant-bank"
-BANK4 = "new-bank" # <--- New bank
+MQ_BANK6_PORT = 8776 # <-- Required, Bank0 = 8770, Bank1 = 8771 ... Bank6 = 8776
+BANK6 = "new-bank" # <-- Required (lowercase and '-' instead of spaces)
+BANK6_RTN = "666777667"  # <-- (Required if automated_config is true)
+BANK6_MRTN = "666777667" # <-- (Required if automated_config is true)
+BANK6_LEGAL_NAME = "New Bank" # <-- (Required if automated_config is true)
+BANK6_FEIN = "333333333" # <-- (Required if automated_config is true)
+BANK6_NET_DEBIT_CAP = 100000000 # <-- (Required if automated_config is true)
+BANK6_INITIAL_BALANCE = 1000000000 # <-- (Required if automated_config is true)
 ```
 
 2. Add a new entries in 'docker-compose.yml' by adding
-    - `- ./SFTP_Keys/${BANK4}/id_rsa.pub:/home/${BANK4}/.ssh/keys/id_rsa.pub:ro` to sftp volumes. There are 2 variables to change in this line: `SFTP_Keys/${BANK4}` and `home/${BANK4}` 
-    - `${BANK4}::1004:1004:inbound,outbound` to envirement `SFTP_USERS` variable, separated by spaces, `1004:1004` increment by 1
+    - `- ./SFTP_Keys/${BANK6}/id_rsa.pub:/home/${BANK6}/.ssh/keys/id_rsa.pub:ro` to sftp volumes. There are 2 variables to change in this line: `SFTP_Keys/${BANK6}` and `home/${BANK6}` 
+    - `${BANK6}::1006:1006:inbound,outbound` to envirement `SFTP_USERS` variable, separated by spaces, `1006:1006` increment by 1
 ```yml
 volumes:
 # Add new bank volumes here: ./SFTP_Keys/<name>/id_rsa.pub:/home/<username>/.ssh/keys/id_rsa.pub:ro
@@ -175,13 +211,41 @@ volumes:
       - ./SFTP_Keys/${BANK2}/id_rsa.pub:/home/${BANK2}/.ssh/keys/id_rsa.pub:ro
       - ./SFTP_Keys/${BANK3}/id_rsa.pub:/home/${BANK3}/.ssh/keys/id_rsa.pub:ro
       - ./SFTP_Keys/${BANK4}/id_rsa.pub:/home/${BANK4}/.ssh/keys/id_rsa.pub:ro
+      - ./SFTP_Keys/${BANK5}/id_rsa.pub:/home/${BANK5}/.ssh/keys/id_rsa.pub:ro
+      - ./SFTP_Keys/${BANK6}/id_rsa.pub:/home/${BANK6}/.ssh/keys/id_rsa.pub:ro
       - ./sftp_set_perms.sh:/etc/sftp.d/set_perms.sh:ro
 environment:
 # Add new banks here: <username>::<uid>:<gid>:inbound,outbound
-    - SFTP_USERS=${BANK0}::1000:1000:inbound,outbound ${BANK1}::1001:1001:inbound,outbound ${BANK2}::1002:1002:inbound,outbound ${BANK3}::1003:1003:inbound,outbound ${BANK4}::1004:1004:inbound,outbound
+    - SFTP_USERS=${BANK0}::1000:1000:inbound,outbound ${BANK1}::1001:1001:inbound,outbound ${BANK2}::1002:1002:inbound,outbound ${BANK3}::1003:1003:inbound,outbound ${BANK4}::1004:1004:inbound,outbound ${BANK5}::1004:1004:inbound,outbound ${BANK6}::1004:1004:inbound,outbound 
 ```
 
 3. Regenerate the keys
+
+4. Add a new bank information in `ACH/main.py` (If used with automated setup)
+```python
+BANK5 = os.environ.get("BANK6", "coffee-bank")
+BANK5_RTN = os.environ.get("BANK6_RTN", "666777667")
+BANK5_MRTN = os.environ.get("BANK6_MRTN", BANK5_RTN)
+BANK5_LEGAL_NAME = os.environ.get("BANK6_LEGAL_NAME", "Coffee Bank")
+BANK5_FEIN = os.environ.get("BANK6_FEIN", "333333333")
+BANK5_NET_DEBIT_CAP = int(os.environ.get("BANK6_NET_DEBIT_CAP", "100000000"))
+BANK5_INITIAL_BALANCE = int(os.environ.get("BANK6_INITIAL_BALANCE", "1000000000"))
+
+BANK_SEED_CONFIGS = [
+  # ... 
+  {
+      "primary_routing_transit_number": BANK6_RTN,
+      "legal_name": BANK6_LEGAL_NAME,
+      "federal_employer_identification_number": BANK6_FEIN,
+      "master_account_rtn": BANK6_MRTN,
+      "net_debit_cap": BANK6_NET_DEBIT_CAP,
+      "sftp_username": BANK6,
+      "server_certificate_expiry": None,
+      "initial_balance": BANK6_INITIAL_BALANCE,
+  }
+  # ...
+]
+```
 
 ### How to remove an SFTP user
 
@@ -224,14 +288,124 @@ Frontend panel available at (http://localhost:3310/)
 
 SFTP server at (localhost:2221)
 
+MQ Clients:
+
+- Bank0 = http://localhost:8770/docs
+- Bank1 = http://localhost:8771/docs
+- Bank2 = http://localhost:8772/docs
+- Bank3 = http://localhost:8773/docs
+- Bank4 = http://localhost:8774/docs
+- Bank5 = http://localhost:8775/docs
+
 Postgres database at (localhost:5439):
 - Username: postgres
 - Password: Password123
 - Database: fed_systems_db
 
+# How to integrate: Step-by-step guide
+
+1. Clone repository
+```bash
+git clone https://github.com/VanillaMile/payment-settlement-systems.git
+```
+2. Open terminal inside `\FedSystems` directory
+3. Copy `.env.example` into `.env`
+```bash
+copy .env.example .env
+```
+4. Open `.env` and edit bank details to your preferance:
+
+Instead of creating a new bank details, edit the existing ones (BANK0, BANK1 ... BANK5). For creating a new bank registration look at [How to manage banks SFTP accounts](#how-to-manage-banks-sftp-accounts)
+```python
+AUTOMATED_CONFIG=true # Allows banks automated setup.
+
+MQ_BANK0_PORT = 8770 # Port for your FedNoW MQ Client
+BANK0 = "baguette-bank" # SFTP username for Bank 0 (must be lowercase and use '-' instead of spaces)
+BANK0_RTN = "040104018" # RTN must be a valid one, check readme for details.
+BANK0_MRTN = "040104018" # Master RTN, usally the same as RTN but can differ for some banks (When multiple banks share the same master account)
+BANK0_LEGAL_NAME = "Baguette Bank"
+BANK0_FEIN = "123456789" # 9 digit Federal Employer Identification Number (it's not the same as RTN)
+BANK0_NET_DEBIT_CAP = 100000000 # Optional: Set a net debit cap for this bank in cents (e.g., 100000000 for $1,000,000.00). If not set, there will be no cap.
+BANK0_INITIAL_BALANCE = 1000000000 # Optional: Set an initial balance for this bank in cents (e.g., 1000000000 for $10,000,000.00). If not set, the bank will start with a zero balance.
+```
+
+5. Run `start.bat` and select option `1.Generate SFTP keys` or run:
+```bash
+python generate_keys.py
+```
+
+6. Start docker engine.
+
+Open your docker desktop app.
+
+or run:
+```
+docker desktop start
+```
+
+7. Start the `fedsystems` container
+
+`start.bat` -> option 2.
+
+or
+
+```bash
+docker-compose up --build
+```
+
+8. Check http://localhost:3310/ where 6 banks should be automatically registered (If automated_config is true).
+    * If you can't see the banks registered try
+      - `docker-compose down -v`
+      - `docker-compose up --build`
+
+(Backend retries registering banks for 1 minute, if this is your first start-up, downloading each image might take longer than that, if backend becomes available before the database, banks might not be able register, restarting the container will fix this problem)
+
+If the bank already exists in database it will not be overwritten.
+
+9. Connect to your SFTP profile:
+
+You'll need your username and key:
+
+* Username: Can be found either inside `.env` as `BANK0 = "baguette-bank"` or on frontend panel (http://localhost:3310/) in `REGISTERED BANKS` section. You can see details about your bank, your username is under the banks lagal name (e.g. for `Bagguette Bank` it's `baguette-bank`)
+* Key: Your key can be found in `FedSystems\SFTP_KEYS\{Your bank name}\ir_rsa` after completing step 5. **Important:** `id_rsa` (without extension) is your private key, this is what you need to log in, you're free to take it out of this folder. `id_rsa.pub` (with extension) is your public key, it will be automatically mounted on the server so it must stay in that folder.
+
+To log in to your sftp account you can use:
+
+```bash
+sftp -oStrictHostKeyChecking=no -i id_rsa -P 2221 baguette-bank@localhost
+```
+
+- add `-oStrictHostKeyChecking=no` to avoid problems when host public key changes.
+- `-i id_rsa` is your private key from `/SFTP_Keys`
+- `-P 2221` is port `2221`
+- `baguette-bank@localhost` `baguette-bank` username from `.env.example` and host
+
+On your SFTP account you'll find directories:
+  - `inbound` - this is where you upload your .ach files
+  - `outbound` - this is where you'll recive files (.ach and .ack) 
+
+In your app you can use a dedicated framework to send files with SFTP (e.g. Paramiko for python).
+
+### Helpers
+
+At http://localhost:8310/docs you'll find endpoints to help you create/convert/validate .ach files:
+
+- `/json-to-ach` - Converts json to ach, example provides minimal data required to create .ach file. You can find more detailed example in `/FedSystems/ACH/sample_full_request.json`. Endpoint returns downloadable .ach file.
+- `/ach-to-json` - Converts .ach file into .json
+- `/validate-ach` - Validates the file. Returns .ack file. **Doesn't check if RTN numbers are part of the network. Only checks if file is valid**
+
+### Sessions
+
+You can start collect and session from http://localhost:3310/#sessions
+
+- Collect - collects .ach file from each bank, validates it and returns .ack in each bank's `outbound` directory. If file is accepted it will be processed in next session. `.ack` file will be named the same as `.ach` file you upload.
+
 # FedNow
 
 ## Table of contents
+- [System flow chart overview](#system-flow-chart-overview)
+- [How to access your dedicated client](#how-to-access-your-dedicated-client)
+- [FedNow Api](#fednow-api)
 
 ## System flow chart overview
 
@@ -240,12 +414,12 @@ graph TD;
     Bank0 -->|/send| Bank0-MQ-Client;
     Bank0-MQ-Client --> FedNow-Service;
     FedNow-Service --> Bank1-MQ-Client; 
-    Bank1 -->|/incoming| Bank1-MQ-Client;
+    Bank1-MQ-Client -->|/FIFO/out| Bank1;
     Bank1 -->|/send| Bank1-MQ-Client;
     Bank1-MQ-Client --> FedNow-Service;
     FedNow-Service --> Banks-Master-Accounts
     FedNow-Service --> Bank0-MQ-Client;
-    Bank0 -->|/incoming| Bank0-MQ-Client
+    Bank0-MQ-Client -->|/FIFO/out| Bank0;
 ```
 
 To communicate with FedNow service use **dedicated client (for example Bank0-MQ-Client in chart above)** instead of direct connection.
@@ -254,34 +428,28 @@ To communicate with FedNow service use **dedicated client (for example Bank0-MQ-
 
 1. In `.env` select one bank as yours, you can change name, port and RTN(must be a valid RTN)
 2. Connect to your selected client with http://localhost:{MQ_BANK_PORT}
-    - Example for:
+    - Example for BANK0:
     ```
-        BANK0 = "baguette-bank"
-        BANK1 = "leek-bank"
-        BANK2 = "bank-of-the-onion"
-        BANK3 = "croissant-bank"
-
-        BANK0_RTN = "040104018"
-        BANK1_RTN = "010101012"
-        BANK2_RTN = "910310314"
-        BANK3_RTN = "514310008"
-
-        MQ_BANK0_PORT = 8770
-        MQ_BANK1_PORT = 8771
-        MQ_BANK2_PORT = 8772
-        MQ_BANK3_PORT = 8773
+    MQ_BANK0_PORT = 8770
+    BANK0 = "baguette-bank"
+    BANK0_RTN = "040104018"
+    BANK0_MRTN = "040104018" 
+    BANK0_LEGAL_NAME = "Baguette Bank"
+    BANK0_FEIN = "123456789"
+    BANK0_NET_DEBIT_CAP = 100000000 
+    BANK0_INITIAL_BALANCE = 1000000000
     ```
-    If you select your bank to be `BANK0` you'd have **RTN: 040104018** and your FedNow client would be accessible via http://localhost:8770
+    If you select your bank to be `BANK0` you'd have **RTN: 040104018** and your FedNow client would be accessible with http://localhost:8770
 
     Encryption is handled internally between client and FedNow system.
 
-    You can find API documentation at http://localhost:8770/docs after starting docker FedSystems docker.
+    You can find API documentation at http://localhost:8770/docs after starting FedSystems in docker.
     
-    Clients are built at start so pre-registration is required.
+    **Clients are built at start so pre-registration is required.**
 
 ## FedNow Api
 
-You should connect to your dedicated client (http://localhost:8770 in example above) not directly.
+You should connect to your dedicated client (http://localhost:8770 in example above).
 
 Replace port 8770 with port for your selected bank.
 
@@ -294,19 +462,23 @@ API also available at  http://localhost:8770/docs
 - http://localhost:8770/mark-collected/{filename} - Allows you to clear file from incoming to collected directory
 - http://localhost:8770/collected - Lists collected files (Used mainly for archiving)
 - http://localhost:8770/collected/{filename} - Allows you to download file from collected directory (Used mainly for archiving)
-- http://localhost:8770/FIFO/out - If no files are available in queue returns `404 - No files in queue`, if files are in queue returns oldest file, and removes file from queue. Files are moved to `/collected` for possible recovery.
+- http://localhost:8770/FIFO/out - If no files are available in queue returns `404 - No files in queue`, if files are in queue returns oldest file, and removes file from queue. Files are moved to `/collected` for future recovery.
+
+You can primarily use these two:
+* http://localhost:8770/FIFO/out -> if there are no files returns `404 - No files in queue`, otherwise returns a file.
+* http://localhost:8770/send -> Used to send xml files. Example: `example-pacs.002.xml`
 
 ### How to send file
 
-- Use http://localhost:8770/send - `POST`, accepts xml files. This is where you'd send any files you want to send to FedNow service.
+- Use http://localhost:8770/send - `POST`, accepts xml files. This is where you send files to FedNow service.
 - Files are automatically renamed to {BANK_RTN}_DATE_TIME_XXXX.xml"
 
 ### How to recive file
 - Method 1:
-    - Use http://localhost:8770/FIFO/out - If no files are available in queue returns `404 - No files in queue`, if files are in queue returns oldest file, and removes file from queue. Files are moved to `/collected` for possible recovery.
+    - Use http://localhost:8770/FIFO/out - If no files are available in queue returns `404 - No files in queue`, if files are in queue returns oldest file, and removes file from queue. Files are moved to `/collected` for future recovery.
 - Method 2:
     - Use http://localhost:8770/incoming/{filename} to fetch specific file from incoming.
-    - Requires user to manually track files and move files out of queue with http://localhost:8770/mark-failed/{filename} or http://localhost:8770/mark-collected/{filename}
+    - Requires user to manually track files and move them out of queue with http://localhost:8770/mark-failed/{filename} or http://localhost:8770/mark-collected/{filename}
 
 # RTP System
 
