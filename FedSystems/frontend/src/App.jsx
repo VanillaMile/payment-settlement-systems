@@ -718,9 +718,17 @@ function SessionsPage() {
   const [collectResult, setCollectResult] = useState('')
   const [collectError, setCollectError] = useState('')
 
+  const [sessionLoading, setSessionLoading] = useState(false)
+  const [sessionCooldownUntil, setSessionCooldownUntil] = useState(0)
+  const [sessionResult, setSessionResult] = useState('')
+  const [sessionError, setSessionError] = useState('')
+
   const apiUrl = import.meta.env.VITE_ACH_API_BASE_URL || 'http://localhost:8001'
   const cooldownRemaining = Math.max(0, Math.ceil((collectCooldownUntil - Date.now()) / 1000))
   const collectDisabled = collectLoading || cooldownRemaining > 0
+
+  const sessionCooldownRemaining = Math.max(0, Math.ceil((sessionCooldownUntil - Date.now()) / 1000))
+  const sessionDisabled = sessionLoading || sessionCooldownRemaining > 0
 
   const handleCollect = async () => {
     if (collectDisabled) {
@@ -747,6 +755,35 @@ function SessionsPage() {
       setCollectCooldownUntil(Date.now() + 3000)
       window.setTimeout(() => {
         setCollectCooldownUntil(0)
+      }, 3000)
+    }
+  }
+
+  const handleSession = async () => {
+    if (sessionDisabled) {
+      return
+    }
+
+    setSessionLoading(true)
+    setSessionError('')
+    setSessionResult('')
+
+    try {
+      const response = await fetch(`${apiUrl}/session`)
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data?.detail || data?.message || `HTTP ${response.status}`)
+      }
+
+      setSessionResult(JSON.stringify(data, null, 2))
+    } catch (error) {
+      setSessionError(error?.message || 'Failed to fetch session')
+    } finally {
+      setSessionLoading(false)
+      setSessionCooldownUntil(Date.now() + 3000)
+      window.setTimeout(() => {
+        setSessionCooldownUntil(0)
       }, 3000)
     }
   }
@@ -793,6 +830,39 @@ function SessionsPage() {
               <pre className="mb-0 p-3 rounded-3 bg-dark text-light small overflow-auto" style={{ minHeight: '14rem', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                 {collectResult || 'Click Collect to run the backend collect endpoint and print the raw JSON response here.'}
               </pre>
+            </div>
+          </div>
+
+          <div className="mt-3">
+            <div className="card border-0 bg-body-tertiary rounded-4">
+              <div className="card-header bg-transparent border-0 pt-3 px-3 px-lg-4 pb-0">
+                <div className="d-flex justify-content-between align-items-start gap-3">
+                  <div>
+                    <div className="text-uppercase text-body-secondary small fw-semibold">Session - Requires collect first</div>
+                    <div className="fw-semibold">Backend response</div>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm fw-semibold"
+                    onClick={handleSession}
+                    disabled={sessionDisabled}
+                  >
+                    {sessionLoading
+                      ? 'Fetching...'
+                      : sessionCooldownRemaining > 0
+                        ? `Run Session (${sessionCooldownRemaining}s)`
+                        : 'Run Session'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="card-body px-3 px-lg-4 pb-4 pt-3">
+                {sessionError ? <div className="alert alert-danger mb-3">{sessionError}</div> : null}
+                <pre className="mb-0 p-3 rounded-3 bg-dark text-light small overflow-auto" style={{ minHeight: '14rem', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                  {sessionResult || 'Click Session to run the backend session endpoint and print the raw JSON response here.'}
+                </pre>
+              </div>
             </div>
           </div>
         </div>

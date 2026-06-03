@@ -1,0 +1,7 @@
+FH,1,LIVE,A
+E,H,1,1002,Immediate origin does not match expected value: 040104018 != 910310314
+E,L,18,5005,Receiving DFI RTN is not in list of participating DFI RTNs: 03100002 not in 04010401, 01010101, 91031031, 51431000, 88877788, 66677766
+E,L,20,5005,Receiving DFI RTN is not in list of participating DFI RTNs: 12312312 not in 04010401, 01010101, 91031031, 51431000, 88877788, 66677766
+E,L,21,5005,Receiving DFI RTN is not in list of participating DFI RTNs: 02100002 not in 04010401, 01010101, 91031031, 51431000, 88877788, 66677766
+E,L,22,5005,Receiving DFI RTN is not in list of participating DFI RTNs: 02600959 not in 04010401, 01010101, 91031031, 51431000, 88877788, 66677766
+E,L,23,5005,Receiving DFI RTN is not in list of participating DFI RTNs: 12210515 not in 04010401, 01010101, 91031031, 51431000, 88877788, 66677766

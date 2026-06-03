@@ -400,6 +400,8 @@ You can start collect and session from http://localhost:3310/#sessions
 
 - Collect - collects .ach file from each bank, validates it and returns .ack in each bank's `outbound` directory. If file is accepted it will be processed in next session. `.ack` file will be named the same as `.ach` file you upload.
 
+- Session - After session you'll find `processed_{your_rtn}_timestamp.ach` in your sftp outbound folder. It contains every transactions targeting your bank, you need to parse it and apply to your bank accounts. Remember that transaction codes `['22', '23', '32', '33']` are for credit, meaning you receive the money, while transaction codes `['27', '28', '37', '38']` are for debit, meaning someone is taking money out of your account. You can find sample files at `FedSystems/ACH/sample`.
+
 # FedNow
 
 ## Table of contents
