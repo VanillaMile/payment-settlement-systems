@@ -15,6 +15,7 @@ import psycopg2
 import psycopg2.extras
 from dotenv import load_dotenv
 from achFileBuilder import *
+import copy
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -177,14 +178,9 @@ def seed_bank_to_database(db_url, bank_config, initial_sender_rtn):
 
         initial_balance = int(bank_config.get("initial_balance", 0) or 0)
         if initial_balance > 0:
-            cur.execute("LOCK TABLE central_ledger_entries IN EXCLUSIVE MODE")
-            cur.execute("SELECT COALESCE(MAX(entry_id), 0) AS max_id FROM central_ledger_entries")
-            next_entry_id = cur.fetchone()["max_id"] + 1
-
             cur.execute(
                 """
                 INSERT INTO central_ledger_entries (
-                    entry_id,
                     master_account_rtn,
                     activity_source_rtn,
                     amount_cents,
@@ -192,11 +188,10 @@ def seed_bank_to_database(db_url, bank_config, initial_sender_rtn):
                     external_ref_id,
                     effective_date
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 RETURNING *
                 """,
                 (
-                    next_entry_id,
                     bank_config["master_account_rtn"],
                     initial_sender_rtn,
                     float(initial_balance),
@@ -748,10 +743,6 @@ async def funds_transfer(transfer_data: FundsTransferRequest):
         sender_registered = sender_master_rtn in registered_accounts
         receiver_registered = receiver_master_rtn in registered_accounts
 
-        cur.execute("LOCK TABLE central_ledger_entries IN EXCLUSIVE MODE")
-        cur.execute("SELECT COALESCE(MAX(entry_id), 0) AS max_id FROM central_ledger_entries")
-        max_id = cur.fetchone()["max_id"]
-
         if normalized_rail in two_leg_rails:
             if not sender_registered or not receiver_registered:
                 raise HTTPException(
@@ -759,17 +750,13 @@ async def funds_transfer(transfer_data: FundsTransferRequest):
                     detail="For ACH/FedNow, both sender and receiver must be registered banks",
                 )
 
-            credit_entry_id = max_id + 1
-            debit_entry_id = max_id + 2
-
             cur.execute(
                 """
-                INSERT INTO central_ledger_entries (entry_id, master_account_rtn, activity_source_rtn, amount_cents, rail_type, external_ref_id, effective_date)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO central_ledger_entries (master_account_rtn, activity_source_rtn, amount_cents, rail_type, external_ref_id, effective_date)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 RETURNING *
                 """,
                 (
-                    credit_entry_id,
                     receiver_master_rtn,
                     sender_master_rtn,
                     amount_value,
@@ -782,12 +769,11 @@ async def funds_transfer(transfer_data: FundsTransferRequest):
 
             cur.execute(
                 """
-                INSERT INTO central_ledger_entries (entry_id, master_account_rtn, activity_source_rtn, amount_cents, rail_type, external_ref_id, effective_date)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO central_ledger_entries (master_account_rtn, activity_source_rtn, amount_cents, rail_type, external_ref_id, effective_date)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 RETURNING *
                 """,
                 (
-                    debit_entry_id,
                     sender_master_rtn,
                     receiver_master_rtn,
                     -amount_value,
@@ -843,8 +829,6 @@ async def funds_transfer(transfer_data: FundsTransferRequest):
                     status_code=400,
                     detail="For non-ACH/FedNow rails, one side must be a registered bank",
                 )
-
-            single_entry_id = max_id + 1
             if sender_registered:
                 master_rtn = sender_master_rtn
                 activity_rtn = receiver_master_rtn
@@ -856,12 +840,11 @@ async def funds_transfer(transfer_data: FundsTransferRequest):
 
             cur.execute(
                 """
-                INSERT INTO central_ledger_entries (entry_id, master_account_rtn, activity_source_rtn, amount_cents, rail_type, external_ref_id, effective_date)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO central_ledger_entries (master_account_rtn, activity_source_rtn, amount_cents, rail_type, external_ref_id, effective_date)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 RETURNING *
                 """,
                 (
-                    single_entry_id,
                     master_rtn,
                     activity_rtn,
                     balance_delta,
@@ -1180,11 +1163,15 @@ def collect_inbound_files():
                 """
                 SELECT primary_routing_transit_number
                 FROM ach_participants
-                WHERE restricted not in (1, 'restricted') 
+                WHERE restricted not in (1, 2) 
                 """
             )
             rows = cur.fetchall()
-            return [row.get("primary_routing_transit_number") for row in rows]
+            dfi_ids = [row.get("primary_routing_transit_number") for row in rows if row.get("primary_routing_transit_number")]
+            rtn_ids = []
+            for rtn in dfi_ids:
+                rtn_ids.append(rtn[:-1])
+            return rtn_ids
         except Exception:
             logger.exception("Failed to get ACH participants")
             return []
@@ -1354,3 +1341,311 @@ def collect_inbound_files():
                 })
 
     return report
+
+def make_bank_list(ach_participants=True, ach_restricted_included=False):
+    """Generate a list of registered banks with their RTNs and legal names."""
+    db_url = os.environ.get("DATABASE_URL")
+    if not db_url:
+        return []
+    conn = None
+    cur = None
+    try:
+        conn = psycopg2.connect(db_url, connect_timeout=5)
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        query = """
+            SELECT master_account_rtn, legal_name
+            FROM bank_details
+        """
+        if ach_participants:
+            query = """
+                SELECT bd.master_account_rtn, bd.legal_name
+                FROM bank_details bd
+                JOIN ach_participants ap ON ap.primary_routing_transit_number = bd.primary_routing_transit_number
+            """
+            if not ach_restricted_included:
+                query += " WHERE ap.restricted NOT IN (1, 2)"
+        cur.execute(query)
+        rows = cur.fetchall()
+        return [{"master_account_rtn": row["master_account_rtn"], "legal_name": row["legal_name"]} for row in rows]
+    except Exception as e:
+        logger.exception("Failed to get bank list")
+        return {"message": "Failed to get bank list", "error": str(e), "query": query}
+
+import pandas as pd
+
+def generate_reference_code(rtn: str) -> str:
+    """Generate an 8-character reference code suitable for NACHA files.
+
+    Format: last 4 digits of the RTN + current UTC hour/minute (HHMM).
+    Example: RTN '040104018' at 13:45 UTC -> '40181345'
+    """
+    try:
+        rtn_str = str(rtn or "")
+        last4 = rtn_str[-4:].rjust(4, "0")
+    except Exception:
+        last4 = "0000"
+    time_part = datetime.utcnow().strftime("%H%M")
+    return f"{last4}{time_part}"
+
+def prep_bank_matrix() -> pd.DataFrame:
+    """Generate a directional matrix by primary RTN from ledger entries.
+
+    Example: 
+                | Bank A | Bank B | Bank C |
+        -----------------------------------------
+        Bank A  |   -     |  -1000  |   500  |
+        Bank B  |  1000   |   -     |   300  |
+        Bank C  |  -500   |   -300  |   -    |
+    """
+    banks = make_bank_list()
+    bank_rtns = [bank["master_account_rtn"] for bank in banks]
+
+    matrix = pd.DataFrame(0, index=bank_rtns, columns=bank_rtns)
+
+    print("Generated matrix:", matrix)
+
+    FBR_RTN = os.environ.get("FRB_ROUTING_NUMBER", "090000515")
+    FRB_NAME = os.environ.get("FRB_LEGAL_NAME", "FRB Tungsten")
+
+    for bank in banks:
+        bank["ACH_json"] = {
+            "header": {
+                "immediate_destination": bank["master_account_rtn"],
+                "immediate_origin": FBR_RTN,
+                "immediate_destination_name": bank["legal_name"],
+                "immediate_origin_name": FRB_NAME,
+                "file_creation_date": datetime.utcnow().strftime("%y%m%d"),
+                "file_creation_time": datetime.utcnow().strftime("%H%M"),
+                "file_id_modifier": "A",
+                "reference_code": generate_reference_code(bank["master_account_rtn"]) 
+            },
+            "batches" : []
+        }
+    return matrix, banks
+
+def get_batches_as_jsons():
+    """Gets ACH from collected directory, converts to JSON and returns a list of ACH JSON objects."""
+
+    collected_root = os.environ.get("COLLECTED_DIR", "/app/collected")
+
+    result = []
+
+    for file in os.listdir(collected_root):
+        if file.endswith(".ach"):
+            with open(os.path.join(collected_root, file), "rb") as f:
+                content = f.read()
+            achFile = ACHFile()
+            lines = convertFileToLines(content.decode("utf-8", errors="replace"))
+            achFile.parse(file_path=file, lines=lines)
+            ach_json = achFileToJson(achFile)
+            batches = ach_json.get("batches", [])
+            for batch in batches:
+                batch["sending_bank_rtn"] = ach_json.get("header", {}).get("immediate_origin")
+                batch["header"]["settlement_date"] = datetime.utcnow().strftime("%j")
+                batch.pop("control", None)
+                result.append(batch)
+    
+    return result
+
+def do_netting(oweMatrix: pd.DataFrame, banksData: list[dict], batches: list[dict]):
+    """Perform netting on the collected ACH batches and generate a netted ACH batch for each receiving bank."""
+    # Calculate net amounts for each bank
+    credit_codes = {"22", "32", "21", "31"}
+    debit_codes = {"27", "37", "26", "36"}
+
+    for batch in batches:
+        sending_bank_rtn = batch.get("sending_bank_rtn")
+        for entry in batch.get("entries", []):
+            receiving_bank_rtn = entry.get("receiving_dfi_rtn")
+            amount_cents = entry.get("amount_cents", 0)
+            transaction_code = str(entry.get("transaction_code", "")).strip()
+            if not sending_bank_rtn or not receiving_bank_rtn:
+                continue
+            if sending_bank_rtn not in oweMatrix.columns or receiving_bank_rtn not in oweMatrix.index:
+                continue
+
+            if transaction_code in credit_codes:
+                # Credit: money is sent to the receiving bank RTN.
+                oweMatrix.at[receiving_bank_rtn, sending_bank_rtn] += amount_cents
+                oweMatrix.at[sending_bank_rtn, receiving_bank_rtn] -= amount_cents
+            elif transaction_code in debit_codes:
+                # Debit: money is taken from the receiving bank RTN and sent to the sending bank RTN.
+                oweMatrix.at[sending_bank_rtn, receiving_bank_rtn] += amount_cents
+                oweMatrix.at[receiving_bank_rtn, sending_bank_rtn] -= amount_cents
+
+    return oweMatrix
+
+def apply_netting(oweMatrix: pd.DataFrame):
+    """Apply netting to the oweMatrix and generate netted ACH batches for each receiving bank.
+    Bank details are not needed, banks RTN is the key."""
+
+    db_url = os.environ.get("DATABASE_URL")
+    if not db_url:
+        logger.warning("DATABASE_URL is not set; skipping netting inserts")
+        return 0
+    conn = None
+    cur = None
+
+    print("DEBUG: Netting result:", oweMatrix)
+
+    try:
+        conn = psycopg2.connect(db_url, connect_timeout=5)
+        cur = conn.cursor()
+
+        external_ref_id = f"ACH_{datetime.utcnow().strftime('%Y%m%d')}"
+        effective_date = datetime.utcnow().date().isoformat()
+        inserted_rows = 0
+
+        insert_sql = """
+            INSERT INTO public.central_ledger_entries
+            (master_account_rtn, activity_source_rtn, amount_cents, rail_type, external_ref_id, effective_date)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """
+
+        print("DEBUG: Starting to insert netting results into central_ledger_entries")
+
+        print("DEBUG: indexes:", oweMatrix.index)
+        print("DEBUG: columns:", oweMatrix.columns)
+
+        for master_account_rtn in oweMatrix.index:
+            for activity_source_rtn in oweMatrix.columns:
+                if master_account_rtn == activity_source_rtn:
+                    continue
+
+                amount_cents = oweMatrix.at[master_account_rtn, activity_source_rtn]
+                if pd.isna(amount_cents):
+                    continue
+
+                amount_value = float(amount_cents)
+                if amount_value == 0:
+                    continue
+                
+                print(f"DEBUG: Inserting netting entry: master_account_rtn={master_account_rtn}, activity_source_rtn={activity_source_rtn}, amount_cents={amount_cents}")
+
+                cur.execute(
+                    insert_sql,
+                    (
+                        str(master_account_rtn),
+                        str(activity_source_rtn),
+                        amount_value,
+                        "ACH",
+                        external_ref_id,
+                        effective_date,
+                    ),
+                )
+                inserted_rows += 1
+
+        conn.commit()
+        logger.info("Inserted %s netting ledger entries with external_ref_id=%s", inserted_rows, external_ref_id)
+        print(f"DEBUG: Successfully inserted {inserted_rows} netting entries into central_ledger_entries")
+        return inserted_rows
+    except Exception as e:
+        if conn is not None:
+            conn.rollback()
+        logger.exception("Failed to insert netting rows into central_ledger_entries")
+        print(f"DEBUG: Failed to insert netting entries into central_ledger_entries: {e}")
+        return 0
+    finally:
+        if cur is not None:
+            cur.close()
+        if conn is not None:
+            conn.close()
+
+def get_bank_sftpname_by_rtn(bank_rtn: str) -> Optional[str]:
+    db_url = os.environ.get("DATABASE_URL")
+    if not db_url:
+        return None
+    conn = None
+    cur = None
+
+    try:
+        conn = psycopg2.connect(db_url, connect_timeout=5)
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            """
+            SELECT sftp_username
+            FROM bank_details
+            WHERE primary_routing_transit_number = %s
+            """,
+            (bank_rtn,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        print(f"DEBUG: Found bank SFTP username for RTN {bank_rtn}: {row.get('sftp_username')}")
+        return row.get("sftp_username")
+    except Exception:
+        logger.exception("Failed to get bank SFTP username for RTN %s", bank_rtn)
+        print(f"DEBUG: Failed to get bank SFTP username for RTN {bank_rtn}")
+        return None
+
+def do_session():
+    oweMatrix, banksData = prep_bank_matrix()
+    batches = get_batches_as_jsons()
+    oweMatrix = do_netting(oweMatrix, banksData, batches)
+    apply_netting(oweMatrix)
+    # Build a lookup of banks by their master_account_rtn for quick access
+    bank_map = {bank["master_account_rtn"]: bank for bank in banksData}
+
+    # For each batch, copy the header and create a per-entry batch for the receiving bank
+    for batch in batches:
+        header = batch.get("header", {})
+        for entry in batch.get("entries", []):
+            receiving_bank_rtn = entry.get("receiving_dfi_rtn")
+            if not receiving_bank_rtn:
+                continue
+
+            bank = bank_map.get(receiving_bank_rtn)
+            if not bank:
+                # Unknown receiving bank; skip
+                continue
+
+            # Deep-copy header and the single entry so we don't mutate originals
+            header_copy = copy.deepcopy(header)
+            entry_copy = copy.deepcopy(entry)
+
+            header_copy["settlement_date"] = datetime.utcnow().strftime("%j")
+
+            ach_json = bank.setdefault("ACH_json", {})
+            batches_list = ach_json.setdefault("batches", [])
+            batches_list.append({
+                "header": header_copy,
+                "entries": [entry_copy],
+            })
+
+    for bank in banksData:
+        ach_json = bank.get("ACH_json", {})
+        if not ach_json.get("batches"):
+            # No batches for this bank, skip
+            continue
+
+        achFile = jsonToAchFile(ach_json, settlement_date=datetime.utcnow().strftime("%j"))
+        ach_lines = achFile.build_ach()
+        ach_content = "\n".join(ach_lines) if isinstance(ach_lines, list) else str(ach_lines)
+        filename = f"processed_{bank['master_account_rtn']}_{datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')}.ach"
+        bank_sftp_name = get_bank_sftpname_by_rtn(bank["master_account_rtn"])
+        output_path = os.path.join(archive_dir, filename)
+        with open(output_path, "w", encoding="utf-8", newline="\n") as f:
+            f.write(ach_content)
+
+        
+        bank_path = os.path.join("/app/sftp_data", bank_sftp_name or "unknown", "outbound", filename)
+        os.makedirs(os.path.dirname(bank_path), exist_ok=True)
+        with open(bank_path, "w", encoding="utf-8", newline="\n") as f:
+            f.write(ach_content)
+
+    # Clear collected directory after processing
+    collected_root = os.environ.get("COLLECTED_DIR", "/app/collected")
+    for file in os.listdir(collected_root):
+        if file.endswith(".ach"):
+            try:
+                os.remove(os.path.join(collected_root, file))
+            except Exception:
+                logger.exception("Failed to remove collected file %s", file)
+
+    return banksData
+
+
+@ach.get("/session", tags=["Session, Available in control panel -> session manager - http://localhost:3310/"])
+def get_session():
+    return {"banks": make_bank_list(), "batches": get_batches_as_jsons(), "processed_banks": do_session()}
