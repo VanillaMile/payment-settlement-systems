@@ -6,3 +6,4 @@ psycopg2-binary==2.9.10
 python-dotenv==1.0.0
 python-multipart==0.0.6
 sqlalchemy==2.0.20
+lxml==5.1.0

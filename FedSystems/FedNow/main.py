@@ -6,6 +6,8 @@ from urllib import error, request
 import json
 import uuid
 import os
+from lxml import etree
+from io import BytesIO
 
 os.makedirs("collected", exist_ok=True)
 
@@ -34,6 +36,7 @@ banks_ports_map = {
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 RANDOM_SAMPLE_XML_PATH = SCRIPT_DIR / "random_sample.xml"
+SCHEMAS_DIR = SCRIPT_DIR / "schemas"
 
 fednow = FastAPI(title="FedNow API", version="1.0")
 
@@ -58,14 +61,16 @@ def get_frb_info():
 
 @fednow.post("/collect", tags=["Messages"])
 def collect_message(file: UploadFile = File(...)):
-    """Save an uploaded XML file into the collected directory for now."""
+    """Save an uploaded XML file into the collected directory after formal validation."""
     try:
         if not file.filename.lower().endswith(".xml"):
             raise HTTPException(status_code=400, detail="File must be XML (.xml)")
 
         contents = file.file.read()
-        filepath = os.path.join("collected", file.filename)
 
+        validation_status = process_file(contents, file.filename)
+
+        filepath = os.path.join("collected", file.filename)
         with open(filepath, "wb") as handle:
             handle.write(contents)
 
@@ -73,20 +78,47 @@ def collect_message(file: UploadFile = File(...)):
             "status": "received",
             "filename": file.filename,
             "size_bytes": len(contents),
+            "validation": validation_status
         }
     except HTTPException:
         raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
     
-def process_file():
-    # Placeholder for future processing logic, e.g. parsing XML, validating, etc.
+def process_file(contents: bytes, filename: str):
+    try:
+        parser = etree.XMLParser(remove_blank_text=True)
+        xml_doc = etree.parse(BytesIO(contents), parser)
+        root_tag = xml_doc.getroot().tag
+        
+        if "pacs.008" in root_tag or "FIToFICstmrCdtTrf" in root_tag:
+            xsd_file = SCHEMAS_DIR / "pacs.008.xsd"
+        elif "pacs.002" in root_tag or "FIToFIPmtStsRpt" in root_tag:
+            xsd_file = SCHEMAS_DIR / "pacs.002.xsd"
+        else:
+            return "File accepted (Unsupported ISO 20022 type)"
+
+        if not xsd_file.exists():
+            return "XML is well-formed (XSD missing)"
+
+        with open(xsd_file, 'rb') as f:
+            schema_root = etree.XML(f.read())
+            schema = etree.XMLSchema(schema_root)
+            
+        schema.assertValid(xml_doc)
+        validation_status = "XSD validation successful"
+
+    except etree.XMLSyntaxError as e:
+        raise HTTPException(status_code=400, detail=f"XML syntax error: {str(e)}")
+    except etree.DocumentInvalid as e:
+        raise HTTPException(status_code=400, detail=f"FedNow XSD schema mismatch: {str(e)}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
     
-    # Validate file
-    # Process file
-    # Make 
-    
-    pass
+
+    return validation_status
     
 def _build_multipart_file_body(field_name: str, filename: str, contents: bytes) -> tuple[bytes, str]:
     boundary = uuid.uuid4().hex

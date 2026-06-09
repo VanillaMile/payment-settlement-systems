@@ -20,7 +20,7 @@
         </FinInstnId>
       </DbtrAgt>
       <Dbtr>
-        <Nm>Jan Kowalski</Nm> <!-- Debtor's name -->
+        <Nm>Tech Solutions Inc.</Nm> <!-- Debtor's name -->
       </Dbtr>
       <DbtrAcct>
         <Id>
@@ -40,7 +40,7 @@
         </FinInstnId>
       </CdtrAgt>
       <Cdtr>
-        <Nm>Firma Handlowa XYZ</Nm> <!-- Beneficiary's name -->
+        <Nm>Commerce Bank of NY</Nm> <!-- Beneficiary's name -->
       </Cdtr>
       <CdtrAcct>
         <Id>
@@ -50,6 +50,9 @@
           </Othr>
         </Id>
       </CdtrAcct>
+      <RmtInf>
+        <Ustrd>Invoice - programming services and software licenses</Ustrd>
+      </RmtInf>
     </CdtTrfTxInf>
   </FIToFICstmrCdtTrf>
 </Document>
