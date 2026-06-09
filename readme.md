@@ -1017,28 +1017,31 @@ Returns system status.
 <Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.008.001.08">
   <FIToFICstmrCdtTrf>
     <GrpHdr>
-      <MsgId>MSG-2026-0001</MsgId>
+      <MsgId>MSG-20260609-0001</MsgId>
+      <CreDtTm>2026-06-09T10:00:00</CreDtTm>
     </GrpHdr>
     <CdtTrfTxInf>
       <PmtId>
-        <EndToEndId>E2E-TEST-0001</EndToEndId>
+        <EndToEndId>E2E-20260609-0001</EndToEndId>
       </PmtId>
       <IntrBkSttlmAmt Ccy="USD">150.00</IntrBkSttlmAmt>
       
       <DbtrAgt>
         <FinInstnId>
           <ClrSysMmbId>
-            <MmbId>BANKA</MmbId>
+            <nm>BANKA</nm>
+            <MmbId>123456780</MmbId>
           </ClrSysMmbId>
         </FinInstnId>
       </DbtrAgt>
       <Dbtr>
-        <Nm>Jan Kowalski</Nm>
+        <Nm>Alice Smith</Nm>
       </Dbtr>
       <DbtrAcct>
         <Id>
           <Othr>
-            <Id>111122223333</Id>
+            <Id>ACC-ALICE-001</Id>
+            <SchmeNm><Prtry>US_ACCT</Prtry></SchmeNm>
           </Othr>
         </Id>
       </DbtrAcct>
@@ -1046,17 +1049,19 @@ Returns system status.
       <CdtrAgt>
         <FinInstnId>
           <ClrSysMmbId>
-            <MmbId>BANKB</MmbId>
+            <nm>BANKB</nm>
+            <MmbId>123456780</MmbId>
           </ClrSysMmbId>
         </FinInstnId>
       </CdtrAgt>
       <Cdtr>
-        <Nm>John Doe</Nm>
+        <Nm>Bob Johnson</Nm>
       </Cdtr>
       <CdtrAcct>
         <Id>
           <Othr>
-            <Id>999988887777</Id>
+            <Id>ACC-BOB-001</Id>
+            <SchmeNm><Prtry>US_ACCT</Prtry></SchmeNm>
           </Othr>
         </Id>
       </CdtrAcct>
@@ -1071,54 +1076,53 @@ Returns system status.
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
-<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.008.001.08">
-  <FIToFICstmrCdtTrf>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.002.001.10">
+  <FIToFIPmtStsRpt>
     <GrpHdr>
-      <MsgId>MSG-2026-0001</MsgId>
+      <MsgId>MSG-20260609-0001-STS</MsgId>
+      <CreDtTm>2026-06-09T10:05:00</CreDtTm>
+      <InstgAgt>
+        <FinInstnId><Nm>BANKB</Nm></FinInstnId>
+      </InstgAgt>
+      <InstdAgt>
+        <FinInstnId><Nm>BANKA</Nm></FinInstnId>
+      </InstdAgt>
     </GrpHdr>
-    <CdtTrfTxInf>
-      <PmtId>
-        <EndToEndId>E2E-TEST-0001</EndToEndId>
-      </PmtId>
-      <IntrBkSttlmAmt Ccy="USD">150.00</IntrBkSttlmAmt>
-      
-      <DbtrAgt>
-        <FinInstnId>
-          <ClrSysMmbId>
-            <MmbId>BANKA</MmbId>
-          </ClrSysMmbId>
-        </FinInstnId>
-      </DbtrAgt>
-      <Dbtr>
-        <Nm>Jan Kowalski</Nm>
-      </Dbtr>
-      <DbtrAcct>
-        <Id>
-          <Othr>
-            <Id>111122223333</Id>
-          </Othr>
-        </Id>
-      </DbtrAcct>
-      
-      <CdtrAgt>
-        <FinInstnId>
-          <ClrSysMmbId>
-            <MmbId>BANKB</MmbId>
-          </ClrSysMmbId>
-        </FinInstnId>
-      </CdtrAgt>
-      <Cdtr>
-        <Nm>John Doe</Nm>
-      </Cdtr>
-      <CdtrAcct>
-        <Id>
-          <Othr>
-            <Id>999988887777</Id>
-          </Othr>
-        </Id>
-      </CdtrAcct>
-    </CdtTrfTxInf>
-  </FIToFICstmrCdtTrf>
+    <OrgnlGrpInfAndSts>
+      <OrgnlMsgId>MSG-20260609-0001</OrgnlMsgId>
+      <GrpSts>ACCP</GrpSts>
+    </OrgnlGrpInfAndSts>
+    <TxInfAndSts>
+      <OrgnlEndToEndId>E2E-20260609-0001</OrgnlEndToEndId>
+      <TxSts>ACCP</TxSts>
+      <AcctSvcrRef>REF-20260609-0001</AcctSvcrRef>
+      <OrgnlTxRef>
+        <IntrBkSttlmAmt Ccy="USD">150.00</IntrBkSttlmAmt>
+        <Dbtr>
+          <Nm>Alice Smith</Nm>
+        </Dbtr>
+        <DbtrAcct>
+          <Id>
+            <Othr>
+              <Id>ACC-ALICE-001</Id>
+              <SchmeNm><Prtry>US_ACCT</Prtry></SchmeNm>
+            </Othr>
+          </Id>
+        </DbtrAcct>
+        <Cdtr>
+          <Nm>Bob Johnson</Nm>
+        </Cdtr>
+        <CdtrAcct>
+          <Id>
+            <Othr>
+              <Id>ACC-BOB-001</Id>
+              <SchmeNm><Prtry>US_ACCT</Prtry></SchmeNm>
+            </Othr>
+          </Id>
+        </CdtrAcct>
+      </OrgnlTxRef>
+    </TxInfAndSts>
+  </FIToFIPmtStsRpt>
 </Document>
 ```
 ---
@@ -1158,6 +1162,7 @@ Content-Type: application/json
 ```json
 {
   "bank_code": "BANKA",
+  "routing_number": "123456780",
   "balance": 10000,
   "debt_limit": 5000
 }
@@ -1190,6 +1195,7 @@ Content-Type: application/json
 ```json
 {
   "bank_code": "BANKB",
+  "routing_number": "040104018",
   "balance": 8000,
   "debt_limit": 3000
 }
@@ -1227,28 +1233,31 @@ x-api-key: key-banka
 <Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.008.001.08">
   <FIToFICstmrCdtTrf>
     <GrpHdr>
-      <MsgId>MSG-2026-0001</MsgId>
+      <MsgId>MSG-20260609-0001</MsgId>
+      <CreDtTm>2026-06-09T10:00:00</CreDtTm>
     </GrpHdr>
     <CdtTrfTxInf>
       <PmtId>
-        <EndToEndId>E2E-TEST-0001</EndToEndId>
+        <EndToEndId>E2E-20260609-0001</EndToEndId>
       </PmtId>
       <IntrBkSttlmAmt Ccy="USD">150.00</IntrBkSttlmAmt>
       
       <DbtrAgt>
         <FinInstnId>
           <ClrSysMmbId>
-            <MmbId>BANKA</MmbId>
+            <nm>BANKA</nm>
+            <MmbId>123456780</MmbId>
           </ClrSysMmbId>
         </FinInstnId>
       </DbtrAgt>
       <Dbtr>
-        <Nm>Jan Kowalski</Nm>
+        <Nm>Alice Smith</Nm>
       </Dbtr>
       <DbtrAcct>
         <Id>
           <Othr>
-            <Id>111122223333</Id>
+            <Id>ACC-ALICE-001</Id>
+            <SchmeNm><Prtry>US_ACCT</Prtry></SchmeNm>
           </Othr>
         </Id>
       </DbtrAcct>
@@ -1256,17 +1265,19 @@ x-api-key: key-banka
       <CdtrAgt>
         <FinInstnId>
           <ClrSysMmbId>
-            <MmbId>BANKB</MmbId>
+            <nm>BANKB</nm>
+            <MmbId>040104018</MmbId>
           </ClrSysMmbId>
         </FinInstnId>
       </CdtrAgt>
       <Cdtr>
-        <Nm>John Doe</Nm>
+        <Nm>Bob Johnson</Nm>
       </Cdtr>
       <CdtrAcct>
         <Id>
           <Othr>
-            <Id>999988887777</Id>
+            <Id>ACC-BOB-001</Id>
+            <SchmeNm><Prtry>US_ACCT</Prtry></SchmeNm>
           </Othr>
         </Id>
       </CdtrAcct>
@@ -1309,8 +1320,8 @@ If validation succeeds:
   <Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.002.001.10">
     <FIToFIPmtStsRpt>
       <GrpHdr>
-        <MsgId>MSG-20260529-3934F7B7</MsgId>
-        <CreDtTm>2026-05-29T00:08:38</CreDtTm>
+        <MsgId>MSG-20260609-02483B99</MsgId>
+        <CreDtTm>2026-06-09T22:03:51</CreDtTm>
         <InstgAgt>
           <FinInstnId>
             <Nm>BANKA</Nm>
@@ -1323,22 +1334,22 @@ If validation succeeds:
         </InstdAgt>
       </GrpHdr>
       <OrgnlGrpInfAndSts>
-        <OrgnlMsgId>MSG-2026-0001</OrgnlMsgId>
+        <OrgnlMsgId>MSG-20260609-0001</OrgnlMsgId>
         <GrpSts>ACTC</GrpSts>
       </OrgnlGrpInfAndSts>
       <TxInfAndSts>
-        <OrgnlEndToEndId>E2E-TEST-0002</OrgnlEndToEndId>
+        <OrgnlEndToEndId>E2E-20260609-0001</OrgnlEndToEndId>
         <TxSts>ACTC</TxSts>
-        <AcctSvcrRef>REF-20260529-CC4FF941</AcctSvcrRef>
+        <AcctSvcrRef>REF-20260609-860C090C</AcctSvcrRef>
         <OrgnlTxRef>
           <IntrBkSttlmAmt Ccy="USD">150.0</IntrBkSttlmAmt>
           <Dbtr>
-            <Nm>Jan Kowalski</Nm>
+            <Nm>Alice Smith</Nm>
           </Dbtr>
           <DbtrAcct>
             <Id>
               <Othr>
-                <Id>111122223333</Id>
+                <Id>ACC-ALICE-001</Id>
                 <SchmeNm>
                   <Prtry>US_ACCT</Prtry>
                 </SchmeNm>
@@ -1346,12 +1357,12 @@ If validation succeeds:
             </Id>
           </DbtrAcct>
           <Cdtr>
-            <Nm>John Doe</Nm>
+            <Nm>Bob Johnson</Nm>
           </Cdtr>
           <CdtrAcct>
             <Id>
               <Othr>
-                <Id>999988887777</Id>
+                <Id>ACC-BOB-001</Id>
                 <SchmeNm>
                   <Prtry>US_ACCT</Prtry>
                 </SchmeNm>
@@ -1430,62 +1441,54 @@ x-api-key: key-bankb
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
-  <Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.002.001.10">
-    <FIToFIPmtStsRpt>
-      <GrpHdr>
-        <MsgId>MSG-20260529-34EB0A88</MsgId>
-        <CreDtTm>2026-05-29T01:25:05</CreDtTm>
-        <InstgAgt>
-          <FinInstnId>
-            <Nm>BANKA</Nm>
-          </FinInstnId>
-        </InstgAgt>
-        <InstdAgt>
-          <FinInstnId>
-            <Nm>BANKB</Nm>
-          </FinInstnId>
-        </InstdAgt>
-      </GrpHdr>
-      <OrgnlGrpInfAndSts>
-        <OrgnlMsgId>E2E-TEST-00991</OrgnlMsgId>
-        <GrpSts>ACTC</GrpSts>
-      </OrgnlGrpInfAndSts>
-      <TxInfAndSts>
-        <OrgnlEndToEndId>E2E-TEST-00991</OrgnlEndToEndId>
-        <TxSts>ACTC</TxSts>
-        <AcctSvcrRef>REF-20260529-463616B9</AcctSvcrRef>
-        <OrgnlTxRef>
-          <IntrBkSttlmAmt Ccy="USD">150.0</IntrBkSttlmAmt>
-          <Dbtr>
-            <Nm>Jan Kowalski</Nm>
-          </Dbtr>
-          <DbtrAcct>
-            <Id>
-              <Othr>
-                <Id>111122223333</Id>
-                <SchmeNm>
-                  <Prtry>US_ACCT</Prtry>
-                </SchmeNm>
-              </Othr>
-            </Id>
-          </DbtrAcct>
-          <Cdtr>
-            <Nm>John Doe</Nm>
-          </Cdtr>
-          <CdtrAcct>
-            <Id>
-              <Othr>
-                <Id>999988887777</Id>
-                <SchmeNm>
-                  <Prtry>US_ACCT</Prtry>
-                </SchmeNm>
-              </Othr>
-            </Id>
-          </CdtrAcct>
-        </OrgnlTxRef>
-      </TxInfAndSts>
-    </FIToFIPmtStsRpt>
-  </Document>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.002.001.10">
+  <FIToFIPmtStsRpt>
+    <GrpHdr>
+      <MsgId>MSG-20260609-0001-STS</MsgId>
+      <CreDtTm>2026-06-09T10:05:00</CreDtTm>
+      <InstgAgt>
+        <FinInstnId><Nm>BANKB</Nm></FinInstnId>
+      </InstgAgt>
+      <InstdAgt>
+        <FinInstnId><Nm>BANKA</Nm></FinInstnId>
+      </InstdAgt>
+    </GrpHdr>
+    <OrgnlGrpInfAndSts>
+      <OrgnlMsgId>MSG-20260609-0001</OrgnlMsgId>
+      <GrpSts>ACCP</GrpSts>
+    </OrgnlGrpInfAndSts>
+    <TxInfAndSts>
+      <OrgnlEndToEndId>E2E-20260609-0001</OrgnlEndToEndId>
+      <TxSts>ACCP</TxSts>
+      <AcctSvcrRef>REF-20260609-0001</AcctSvcrRef>
+      <OrgnlTxRef>
+        <IntrBkSttlmAmt Ccy="USD">150.00</IntrBkSttlmAmt>
+        <Dbtr>
+          <Nm>Alice Smith</Nm>
+        </Dbtr>
+        <DbtrAcct>
+          <Id>
+            <Othr>
+              <Id>ACC-ALICE-001</Id>
+              <SchmeNm><Prtry>US_ACCT</Prtry></SchmeNm>
+            </Othr>
+          </Id>
+        </DbtrAcct>
+        <Cdtr>
+          <Nm>Bob Johnson</Nm>
+        </Cdtr>
+        <CdtrAcct>
+          <Id>
+            <Othr>
+              <Id>ACC-BOB-001</Id>
+              <SchmeNm><Prtry>US_ACCT</Prtry></SchmeNm>
+            </Othr>
+          </Id>
+        </CdtrAcct>
+      </OrgnlTxRef>
+    </TxInfAndSts>
+  </FIToFIPmtStsRpt>
+</Document>
 ```
 
 Meaning:
@@ -1664,6 +1667,7 @@ If receiver bank does not exist:
 | Field               | Type     |
 | ------------------- | -------- |
 | `bank_code`         | String   |
+| `routing_number`    | String   |
 | `balance`           | Float    |
 | `debt_limit`        | Float    |
 | `status`            | String   |
@@ -1687,6 +1691,9 @@ If receiver bank does not exist:
 | `debtor_account`   | String   |
 | `creditor_name`    | String   |
 | `creditor_account` | String   |
+| `sender_rtn`       | String   |
+| `receiver_rtn`     | String   |
+
 
 ---
 
