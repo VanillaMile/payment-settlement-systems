@@ -15,7 +15,7 @@ ISO_20022_XSD = """<?xml version="1.0" encoding="UTF-8"?>
           <xs:complexType>
             <xs:sequence>
               <xs:element name="GrpHdr">
-                <xs:complexType><xs:sequence><xs:element name="MsgId" type="xs:string"/></xs:sequence></xs:complexType>
+                <xs:complexType><xs:sequence><xs:element name="MsgId" type="xs:string"/><xs:element name="CreDtTm" type="xs:string"/></xs:sequence></xs:complexType>
               </xs:element>
               <xs:element name="CdtTrfTxInf">
                 <xs:complexType>
@@ -24,11 +24,7 @@ ISO_20022_XSD = """<?xml version="1.0" encoding="UTF-8"?>
                       <xs:complexType><xs:sequence><xs:element name="EndToEndId" type="xs:string"/></xs:sequence></xs:complexType>
                     </xs:element>
                     <xs:element name="IntrBkSttlmAmt">
-                      <xs:complexType>
-                        <xs:simpleContent>
-                          <xs:extension base="xs:decimal"><xs:attribute name="Ccy" type="xs:string" use="required"/></xs:extension>
-                        </xs:simpleContent>
-                      </xs:complexType>
+                      <xs:complexType><xs:simpleContent><xs:extension base="xs:decimal"><xs:attribute name="Ccy" type="xs:string"/></xs:extension></xs:simpleContent></xs:complexType>
                     </xs:element>
                     <xs:element name="DbtrAgt" type="AgentType"/>
                     <xs:element name="Dbtr" type="PartyType"/>
@@ -36,6 +32,9 @@ ISO_20022_XSD = """<?xml version="1.0" encoding="UTF-8"?>
                     <xs:element name="CdtrAgt" type="AgentType"/>
                     <xs:element name="Cdtr" type="PartyType"/>
                     <xs:element name="CdtrAcct" type="AccountType"/>
+                    <xs:element name="RmtInf" minOccurs="0">
+                        <xs:complexType><xs:sequence><xs:element name="Ustrd" type="xs:string"/></xs:sequence></xs:complexType>
+                    </xs:element>
                   </xs:sequence>
                 </xs:complexType>
               </xs:element>
@@ -46,9 +45,9 @@ ISO_20022_XSD = """<?xml version="1.0" encoding="UTF-8"?>
     </xs:complexType>
   </xs:element>
 
-  <xs:complexType name="AgentType"><xs:sequence><xs:element name="FinInstnId"><xs:complexType><xs:sequence><xs:element name="ClrSysMmbId"><xs:complexType><xs:sequence><xs:element name="MmbId" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType>
+  <xs:complexType name="AgentType"><xs:sequence><xs:element name="FinInstnId"><xs:complexType><xs:sequence><xs:element name="ClrSysMmbId"><xs:complexType><xs:sequence><xs:element name="nm" type="xs:string"/><xs:element name="MmbId" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType>
   <xs:complexType name="PartyType"><xs:sequence><xs:element name="Nm" type="xs:string"/></xs:sequence></xs:complexType>
-  <xs:complexType name="AccountType"><xs:sequence><xs:element name="Id"><xs:complexType><xs:sequence><xs:element name="Othr"><xs:complexType><xs:sequence><xs:element name="Id" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType>
+  <xs:complexType name="AccountType"><xs:sequence><xs:element name="Id"><xs:complexType><xs:sequence><xs:element name="Othr"><xs:complexType><xs:sequence><xs:element name="Id" type="xs:string"/><xs:element name="SchmeNm"><xs:complexType><xs:sequence><xs:element name="Prtry" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType>
 </xs:schema>
 """
 
@@ -104,14 +103,17 @@ def extract_rtp_data(xml_string: str):
     msg_id_node = root.find('.//{*}GrpHdr//{*}MsgId')
     end_to_end_node = root.find('.//{*}PmtId//{*}EndToEndId')
     amount_node = root.find('.//{*}IntrBkSttlmAmt')
-    sender_node = root.find('.//{*}DbtrAgt//{*}FinInstnId//{*}ClrSysMmbId//{*}MmbId')
-    receiver_node = root.find('.//{*}CdtrAgt//{*}FinInstnId//{*}ClrSysMmbId//{*}MmbId')
+    sender_node = root.find('.//{*}DbtrAgt//{*}FinInstnId//{*}ClrSysMmbId//{*}nm')
+    receiver_node = root.find('.//{*}CdtrAgt//{*}FinInstnId//{*}ClrSysMmbId//{*}nm')
     debtor_name_node = root.find('.//{*}Dbtr//{*}Nm')
     debtor_account_node = root.find('.//{*}DbtrAcct//{*}Id//{*}Othr//{*}Id')
     if debtor_account_node is None: debtor_account_node = root.find('.//{*}DbtrAcct//{*}Id')
     creditor_name_node = root.find('.//{*}Cdtr//{*}Nm')
     creditor_account_node = root.find('.//{*}CdtrAcct//{*}Id//{*}Othr//{*}Id')
     if creditor_account_node is None: creditor_account_node = root.find('.//{*}CdtrAcct//{*}Id')
+    sender_rtn_node = root.find('.//{*}DbtrAgt//{*}MmbId')
+    receiver_rtn_node = root.find('.//{*}CdtrAgt//{*}MmbId')
+    ustrd_node = root.find('.//{*}RmtInf//{*}Ustrd')
     
     if None in (amount_node, sender_node, receiver_node, msg_id_node, end_to_end_node):
         raise ValueError("Missing required ISO 20022 tags.")
@@ -126,7 +128,10 @@ def extract_rtp_data(xml_string: str):
         "debtor_name": debtor_name_node.text if debtor_name_node is not None else None,
         "debtor_account": debtor_account_node.text if debtor_account_node is not None else None,
         "creditor_name": creditor_name_node.text if creditor_name_node is not None else None,
-        "creditor_account": creditor_account_node.text if creditor_account_node is not None else None
+        "creditor_account": creditor_account_node.text if creditor_account_node is not None else None,
+        "sender_rtn": sender_rtn_node.text if sender_rtn_node is not None else None,
+        "receiver_rtn": receiver_rtn_node.text if receiver_rtn_node is not None else None,
+        "description": ustrd_node.text if ustrd_node is not None else "No description",
     }
 
 def extract_pacs002_data(xml_string: str):
@@ -217,3 +222,21 @@ def generate_pacs002(data: dict, status: str) -> str:
         </TxInfAndSts>
     </FIToFIPmtStsRpt>
 </Document>"""
+
+def is_valid_rtn(rtn: str) -> bool:
+    # sprawdź czy to 9 cyfr
+    if not (len(rtn) == 9 and rtn.isdigit()):
+        return False
+    
+    # przekształć na listę liczb
+    d = [int(digit) for digit in rtn]
+    
+    # wzór (3(d1+d4+d7) + 7(d2+d5+d8) + 1(d3+d6+d9)) mod 10 = 0
+    # Indeksy d1=0, d2=1, d3=2, d4=3, d5=4, d6=5, d7=6, d8=7, d9=8
+    checksum = (
+        3 * (d[0] + d[3] + d[6]) + 
+        7 * (d[1] + d[4] + d[7]) + 
+        1 * (d[2] + d[5] + d[8])
+    )
+    
+    return checksum % 10 == 0

@@ -42,6 +42,9 @@ def register_bank(bank_data: BankCreate, db: Session = Depends(get_db)):
     existing_bank = db.query(Bank).filter(Bank.bank_code == bank_data.bank_code).first()
     if existing_bank:
         raise HTTPException(status_code=400, detail=f"Bank with code {bank_data.bank_code} already exists.")
+
+    if db.query(Bank).filter(Bank.routing_number == bank_data.routing_number).first():
+        raise HTTPException(status_code=400, detail="Routing number already exists.")
     
     new_api_key = f"key-{secrets.token_hex(8)}"
     
