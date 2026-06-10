@@ -117,6 +117,18 @@ services:
       - MQ_BANK3_URL=http://message-queue-bank3-client:8000
       - MQ_BANK4_URL=http://message-queue-bank4-client:8000
       - MQ_BANK5_URL=http://message-queue-bank5-client:8000
+      - MQ_BANK0_LEGAL_NAME=${BANK0_LEGAL_NAME}
+      - MQ_BANK1_LEGAL_NAME=${BANK1_LEGAL_NAME}
+      - MQ_BANK2_LEGAL_NAME=${BANK2_LEGAL_NAME}
+      - MQ_BANK3_LEGAL_NAME=${BANK3_LEGAL_NAME}
+      - MQ_BANK4_LEGAL_NAME=${BANK4_LEGAL_NAME}
+      - MQ_BANK5_LEGAL_NAME=${BANK5_LEGAL_NAME}
+      - MQ_BANK0_PORT=${MQ_BANK0_PORT}
+      - MQ_BANK1_PORT=${MQ_BANK1_PORT}
+      - MQ_BANK2_PORT=${MQ_BANK2_PORT}
+      - MQ_BANK3_PORT=${MQ_BANK3_PORT}
+      - MQ_BANK4_PORT=${MQ_BANK4_PORT}
+      - MQ_BANK5_PORT=${MQ_BANK5_PORT}
     depends_on:
       - postgres
     volumes:
@@ -149,8 +161,10 @@ services:
       - "${REACT_PORT}:5173"
     environment:
       - VITE_ACH_API_BASE_URL=http://localhost:${APP_ACH_PORT}
+      - VITE_FEDNOW_API_BASE_URL=http://localhost:${APP_FEDNOW_PORT}
     depends_on:
       - ach-backend
+      - fednow-backend
     volumes:
       - ./frontend:/app
       - /app/node_modules
