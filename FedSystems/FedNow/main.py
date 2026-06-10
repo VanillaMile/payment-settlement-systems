@@ -38,6 +38,20 @@ MQ_BANK3_URL = os.environ.get("MQ_BANK3_URL", "message-queue-bank3-client:8000")
 MQ_BANK4_URL = os.environ.get("MQ_BANK4_URL", "message-queue-bank4-client:8000")
 MQ_BANK5_URL = os.environ.get("MQ_BANK5_URL", "message-queue-bank5-client:8000")
 
+MQ_BANK0_LEGAL_NAME = os.environ.get("MQ_BANK0_LEGAL_NAME", "Bank 0")
+MQ_BANK1_LEGAL_NAME = os.environ.get("MQ_BANK1_LEGAL_NAME", "Bank 1")
+MQ_BANK2_LEGAL_NAME = os.environ.get("MQ_BANK2_LEGAL_NAME", "Bank 2")
+MQ_BANK3_LEGAL_NAME = os.environ.get("MQ_BANK3_LEGAL_NAME", "Bank 3")
+MQ_BANK4_LEGAL_NAME = os.environ.get("MQ_BANK4_LEGAL_NAME", "Bank 4")
+MQ_BANK5_LEGAL_NAME = os.environ.get("MQ_BANK5_LEGAL_NAME", "Bank 5")
+
+MQ_BANK0_PORT = os.environ.get("MQ_BANK0_PORT", "8000")
+MQ_BANK1_PORT = os.environ.get("MQ_BANK1_PORT", "8000")
+MQ_BANK2_PORT = os.environ.get("MQ_BANK2_PORT", "8000")
+MQ_BANK3_PORT = os.environ.get("MQ_BANK3_PORT", "8000")
+MQ_BANK4_PORT = os.environ.get("MQ_BANK4_PORT", "8000")
+MQ_BANK5_PORT = os.environ.get("MQ_BANK5_PORT", "8000")
+
 banks_ports_map = {
     MQ_BANK0_RTN: MQ_BANK0_URL,
     MQ_BANK1_RTN: MQ_BANK1_URL,
@@ -75,6 +89,17 @@ def get_frb_info():
         "routing_number": FRB_ROUTING_NUMBER,
         "legal_name": FRB_LEGAL_NAME
     }
+
+@fednow.get("/banks", tags=["Banks"])
+def list_banks():
+    return [
+        {"routing_number": MQ_BANK0_RTN, "legal_name": MQ_BANK0_LEGAL_NAME, "port": MQ_BANK0_PORT},
+        {"routing_number": MQ_BANK1_RTN, "legal_name": MQ_BANK1_LEGAL_NAME, "port": MQ_BANK1_PORT},
+        {"routing_number": MQ_BANK2_RTN, "legal_name": MQ_BANK2_LEGAL_NAME, "port": MQ_BANK2_PORT},
+        {"routing_number": MQ_BANK3_RTN, "legal_name": MQ_BANK3_LEGAL_NAME, "port": MQ_BANK3_PORT},
+        {"routing_number": MQ_BANK4_RTN, "legal_name": MQ_BANK4_LEGAL_NAME, "port": MQ_BANK4_PORT},
+        {"routing_number": MQ_BANK5_RTN, "legal_name": MQ_BANK5_LEGAL_NAME, "port": MQ_BANK5_PORT}
+    ]
 
 @fednow.post("/collect", tags=["Messages"])
 def collect_message(file: UploadFile = File(...)):

@@ -13,6 +13,7 @@ const navigationItems = [
 
 function HomePage({
   apiUrl,
+  fednowApiUrl,
   backendStatus,
   onRefresh,
   onBankAdded,
@@ -20,6 +21,8 @@ function HomePage({
   sftpLoading,
   achBanks,
   achBanksLoading,
+  fednowBanks,
+  fednowBanksLoading,
   bankBalances,
   bankBalanceLoadingByRtn,
 }) {
@@ -306,11 +309,33 @@ function HomePage({
               <div className="card h-100 border-0 rounded-4" style={{ backgroundColor: '#f4effc' }}>
                 <div className="card-body p-3 p-lg-4">
                   <div className="text-uppercase text-body-secondary small fw-semibold mb-2">
-                    FedNow API Endpoint
+                    FedNow Banks Docs
                   </div>
-                  <span className="badge rounded-pill text-white fw-semibold" style={{ backgroundColor: '#6f42c1' }}>
-                    WIP
-                  </span>
+                  <div className="small text-body-secondary mb-2">
+                    Source: <a href={fednowApiUrl + '/docs'} target="_blank" rel="noopener noreferrer">FedNow API</a>
+                  </div>
+
+                  {fednowBanksLoading ? (
+                    <div>Loading FedNow banks...</div>
+                  ) : (
+                    <ul className="list-group list-group-flush rounded-3 overflow-hidden">
+                      {(!fednowBanks || fednowBanks.length === 0) && (
+                        <li className="list-group-item bg-transparent px-0">No FedNow banks found</li>
+                      )}
+                      {(fednowBanks || []).map((bank) => (
+                        <li key={bank.routing_number} className="list-group-item bg-transparent px-0 py-2 border-0">
+                          <a
+                            href={`http://localhost:${bank.port}/docs`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-decoration-none fw-semibold"
+                          >
+                            {bank.legal_name} ({bank.routing_number}) - localhost:{bank.port}/docs
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               </div>
             </div>
@@ -894,6 +919,11 @@ function App() {
   const [sftpLoading, setSftpLoading] = useState(false)
   const [achBanks, setAchBanks] = useState([])
   const [achBanksLoading, setAchBanksLoading] = useState(false)
+  const [fednowApiUrl] = useState(() => {
+    return import.meta.env.VITE_FEDNOW_API_BASE_URL || 'http://localhost:8000'
+  })
+  const [fednowBanks, setFednowBanks] = useState([])
+  const [fednowBanksLoading, setFednowBanksLoading] = useState(false)
   const [bankBalances, setBankBalances] = useState({})
   const [bankBalanceLoadingByRtn, setBankBalanceLoadingByRtn] = useState({})
 
@@ -983,6 +1013,27 @@ function App() {
   useEffect(() => {
     if (page !== pages.home) return
 
+    const controller = new AbortController()
+    setFednowBanksLoading(true)
+
+    fetch(`${fednowApiUrl}/banks`, { signal: controller.signal })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.json()
+      })
+      .then((data) => setFednowBanks(Array.isArray(data) ? data : []))
+      .catch((err) => {
+        if (err.name === 'AbortError') return
+        setFednowBanks([])
+      })
+      .finally(() => setFednowBanksLoading(false))
+
+    return () => controller.abort()
+  }, [fednowApiUrl, page])
+
+  useEffect(() => {
+    if (page !== pages.home) return
+
     const rtNs = (achBanks || [])
       .map((b) => b.master_account_rtn)
       .filter((rtn) => rtn !== null && rtn !== undefined)
@@ -1059,12 +1110,15 @@ function App() {
     return (
       <HomePage
         apiUrl={apiUrl}
+        fednowApiUrl={fednowApiUrl}
         backendStatus={backendStatus}
         onRefresh={refreshBackendStatus}
         sftpUsers={sftpUsers}
         sftpLoading={sftpLoading}
         achBanks={achBanks}
         achBanksLoading={achBanksLoading}
+        fednowBanks={fednowBanks}
+        fednowBanksLoading={fednowBanksLoading}
         bankBalances={bankBalances}
         bankBalanceLoadingByRtn={bankBalanceLoadingByRtn}
         onBankAdded={loadAchBanks}
