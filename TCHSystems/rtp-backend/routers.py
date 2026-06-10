@@ -1,15 +1,16 @@
-from fastapi import APIRouter, HTTPException, Body, Depends, Header
+from fastapi import APIRouter, HTTPException, Body, Depends, Header, Response, Query
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
+from pydantic import BaseModel
 import secrets
-from database import get_db, Bank, Transaction, NettingReport, GridlockQueue
-from schemas import LiquidityInjection, BankCreate
-from services.xml_service import validate_xml_schema, extract_rtp_data
+from database import get_db, Bank, Transaction, NettingReport, GridlockQueue, MessageQueue
+from schemas import LiquidityInjection, BankCreate, SettlementRequest
+from services.xml_service import validate_xml_schema, extract_pacs002_data, extract_rtp_data, generate_pacs002, validate_pacs002_schema
 from services.gridlock_service import resolve_gridlock
 
 router = APIRouter()
 
-# kody błędów ISO 20022
+# Kody błędów ISO 20022
 ISO_ERROR_CODES = {
     "AM04": "Insufficient funds",
     "AM03": "Blocked account",
@@ -19,7 +20,6 @@ ISO_ERROR_CODES = {
 
 TIME_TO_RECOVER_SECONDS = 60
 
-# ZABEZPIECZENIE TOŻSAMOŚCI
 def get_current_bank(x_api_key: str = Header(...), db: Session = Depends(get_db)):
     """Sprawdza, czy bank posiada ważny klucz API w nagłówku zapytania"""
     bank = db.query(Bank).filter(Bank.api_key == x_api_key).first()
@@ -37,12 +37,14 @@ def check_timeouts(db: Session):
     db.commit()
 
 
-# ENDPOINTY ZARZĄDZANIA BANKAMI
 @router.post("/banks", tags=["Bank"])
 def register_bank(bank_data: BankCreate, db: Session = Depends(get_db)):
     existing_bank = db.query(Bank).filter(Bank.bank_code == bank_data.bank_code).first()
     if existing_bank:
         raise HTTPException(status_code=400, detail=f"Bank with code {bank_data.bank_code} already exists.")
+
+    if db.query(Bank).filter(Bank.routing_number == bank_data.routing_number).first():
+        raise HTTPException(status_code=400, detail="Routing number already exists.")
     
     new_api_key = f"key-{secrets.token_hex(8)}"
     
@@ -100,7 +102,6 @@ def get_banks_status(db: Session = Depends(get_db)):
         } for b in banks
     }
 
-# ENDPOINTY TRANSAKCYJNE I GUI
 @router.get("/transactions", tags=["RTP GUI"])
 def get_transactions(db: Session = Depends(get_db)):
     txs = db.query(Transaction).order_by(Transaction.id.desc()).limit(50).all()
@@ -149,13 +150,16 @@ def get_gridlock_queue(db: Session = Depends(get_db)):
             pass
     return parsed_queue
 
-@router.post("/transfer", tags=["Core System"])
+@router.post("/transfers", tags=["Core System"])
 async def process_transfer(
     xml_data: str = Body(..., media_type="application/xml"), 
     db: Session = Depends(get_db),
     current_bank: Bank = Depends(get_current_bank)
 ):
+    """Odbiera pacs.008, weryfikuje salda, odrzuca lub kolejkuje do odbioru (MQ) i zwraca pacs.002."""
     check_timeouts(db)
+    
+    data = {} 
     
     try:
         # walidacja schematu
@@ -163,6 +167,9 @@ async def process_transfer(
         
         # Ekstrakcja danych
         data = extract_rtp_data(xml_data)
+        
+        data["sender_name"] = current_bank.bank_code
+        data["receiver_name"] = data["receiver_code"]
         amount = data["amount"]
         currency = data["currency"]
         sender_code = data["sender_code"]
@@ -170,38 +177,40 @@ async def process_transfer(
         e2e_id = data["end_to_end_id"]
         
     except ValueError as ve:
-        raise HTTPException(status_code=400, detail=str(ve))
+        return Response(content=generate_pacs002(data, "RJCT"), media_type="application/xml", status_code=400)
     except Exception:
-        raise HTTPException(status_code=400, detail="Invalid ISO 20022 XML format.")
+        return Response(content=generate_pacs002(data, "RJCT"), media_type="application/xml", status_code=400)
 
     if currency not in ["USD"]:
-        raise HTTPException(status_code=400, detail=f"Currency {currency} not supported.")
+        return Response(content=generate_pacs002(data, "RJCT"), media_type="application/xml", status_code=400)
 
     if current_bank.bank_code != sender_code:
-        raise HTTPException(status_code=403, detail="Unauthorized sender.")
+        return Response(content=generate_pacs002(data, "RJCT"), media_type="application/xml", status_code=403)
 
     if amount <= 0:
-        raise HTTPException(status_code=400, detail="Transfer amount must be positive.")
+        return Response(content=generate_pacs002(data, "RJCT"), media_type="application/xml", status_code=400)
 
     # Ochrona przed podwójnym przelewem (DU01)
     existing_tx = db.query(Transaction).filter(Transaction.message_id == e2e_id).first()
     if existing_tx:
-        return {"status": "DUPLICATE", "code": "DU01", "message": ISO_ERROR_CODES["DU01"]}
+        return Response(content=generate_pacs002(data, "RJCT"), media_type="application/xml", status_code=409)
 
     # Walidacja odbiorcy (AC03)
     receiver = db.query(Bank).filter(Bank.bank_code == receiver_code).first()
     if not receiver:
-        raise HTTPException(status_code=404, detail={"code": "AC03", "message": ISO_ERROR_CODES["AC03"]})
+        return Response(content=generate_pacs002(data, "RJCT"), media_type="application/xml", status_code=404)
 
     # Blokada banku (AM03)
     if current_bank.status == "BLOCKED":
-        return {"status": "REJECTED", "code": "AM03", "message": ISO_ERROR_CODES["AM03"]}
+        return Response(content=generate_pacs002(data, "RJCT"), media_type="application/xml", status_code=403)
 
     # Walidacja środków
     available_funds = current_bank.balance + current_bank.debt_limit
+    
     if amount <= available_funds:
-        current_bank.balance -= amount
-        receiver.balance += amount
+        # kolejkowanie dla odbiorcy gdy są środki
+        
+        # Odbiorca musi zaakceptować u siebie przelew
         if current_bank.balance >= -current_bank.debt_limit:
             current_bank.limit_exceeded_at = None
             
@@ -209,7 +218,7 @@ async def process_transfer(
             sender_code=current_bank.bank_code, 
             receiver_code=receiver.bank_code, 
             amount=amount, 
-            status="STANDARD", 
+            status="PENDING",
             message_id=e2e_id,
             debtor_name=data.get("debtor_name"),
             debtor_account=data.get("debtor_account"),
@@ -217,28 +226,136 @@ async def process_transfer(
             creditor_account=data.get("creditor_account")
         )
         db.add(new_tx)
+
+        # Wrzucenie do kolejki dla banku odbiorcy
+        new_message = MessageQueue(
+            owner_bank_code=receiver.bank_code,
+            message_type="pacs.008",
+            message_id=e2e_id,
+            payload=xml_data,
+            status="PENDING"
+        )
+        db.add(new_message)
         db.commit()
-        return {"status": "ACCEPTED", "message": "Settlement completed."}
+        
+        # ACTC - Accepted Technical Validation
+        return Response(content=generate_pacs002(data, "ACTC"), media_type="application/xml", status_code=202)
+        
     else:
-        # Brak środków - Dodajemy do kolejki
+        # gridlock dla braku środków (AM04)
+        
+        # Dodajemy do kolejki Gridlock
         db.add(GridlockQueue(xml_payload=xml_data))
         if current_bank.limit_exceeded_at is None:
             current_bank.limit_exceeded_at = datetime.now(timezone.utc)
         db.commit()
         
-        # Próba automatycznego rozliczenia
+        # automatyczne rozliczanie przelewów
         resolve_gridlock(db)
         
-        queue_size = db.query(GridlockQueue).count()
-        return {
-            "status": "GRIDLOCK_QUEUED", 
-            "code": "AM04", 
-            "message": ISO_ERROR_CODES["AM04"], 
-            "queue_size": queue_size
-        }
+        # zwracamy PDNG (Pending) potwierdzenie o przyjeciu przelewu, ale jest w kolejce gridlocka
+        return Response(content=generate_pacs002(data, "PDNG"), media_type="application/xml", status_code=202)
+
+@router.get("/queue/incoming", tags=["MQ Core System"])
+async def get_incoming_messages(
+    limit: int = Query(10, description="Maksymalna liczba wiadomosci do pobrania"),
+    db: Session = Depends(get_db),
+    current_bank: Bank = Depends(get_current_bank)
+):
+    """Endpoint dla banków do pobierania nowych, oczekujących przelewów z ich kolejki."""
+    messages = db.query(MessageQueue).filter(
+        MessageQueue.owner_bank_code == current_bank.bank_code,
+        MessageQueue.status == "PENDING"
+    ).limit(limit).all()
+
+    response_data = []
+    for msg in messages:
+        response_data.append({
+            "queue_id": msg.id,
+            "message_id": msg.message_id,
+            "type": msg.message_type,
+            "payload": msg.payload 
+        })
+        msg.status = "FETCHED"
+
+    db.commit()
+    return {"messages": response_data}
+
+@router.post("/transfers/settle", tags=["MQ Core System"])
+async def settle_transfer(
+    xml_data: str = Body(..., media_type="application/xml"),
+    db: Session = Depends(get_db),
+    current_bank: Bank = Depends(get_current_bank)
+):
+    """Endpoint dla banku docelowego. Odsyła plik pacs.002, co uwalnia środki i powiadamia nadawcę."""
+
+    try:
+        validate_pacs002_schema(xml_data)
+        
+        pacs002_data = extract_pacs002_data(xml_data)
+        e2e_id = pacs002_data["end_to_end_id"]
+        status = pacs002_data["status"]
+    except Exception as e:
+        print(f"BŁĄD WALIDACJI LUB PARSOWANIA XML: {e}")
+        return Response(content=generate_pacs002({"end_to_end_id": "UNKNOWN"}, "RJCT"), media_type="application/xml", status_code=400)
+
+    transaction = db.query(Transaction).filter(Transaction.message_id == e2e_id).first()
+    
+    if not transaction:
+        return Response(content=generate_pacs002({"end_to_end_id": e2e_id}, "RJCT"), media_type="application/xml", status_code=404)
+        
+    if transaction.status != "PENDING":
+        return Response(content=generate_pacs002({"end_to_end_id": e2e_id}, "RJCT"), media_type="application/xml", status_code=400)
+
+    if transaction.receiver_code != current_bank.bank_code:
+        return Response(content=generate_pacs002({"end_to_end_id": e2e_id}, "RJCT"), media_type="application/xml", status_code=403)
+
+    sender = db.query(Bank).filter(Bank.bank_code == transaction.sender_code).first()
+
+    if status == "ACCP":
+        sender.balance -= transaction.amount
+        current_bank.balance += transaction.amount
+        transaction.status = "COMPLETED"
+    else:
+        transaction.status = "REJECTED"
+
+    msg_in_queue = db.query(MessageQueue).filter(
+        MessageQueue.message_id == e2e_id, 
+        MessageQueue.owner_bank_code == current_bank.bank_code
+    ).first()
+    if msg_in_queue:
+        msg_in_queue.status = "PROCESSED"
+
+    response_data = {
+        "end_to_end_id": transaction.message_id,
+        "msg_id": transaction.message_id,
+        "sender_name": transaction.sender_code,
+        "receiver_name": current_bank.bank_code,
+        "amount": transaction.amount,
+        "currency": "USD",
+        "debtor_name": transaction.debtor_name or "UNKNOWN",
+        "debtor_account": transaction.debtor_account or "UNKNOWN",
+        "creditor_name": transaction.creditor_name or "UNKNOWN",
+        "creditor_account": transaction.creditor_account or "UNKNOWN"
+    }
+
+    return_message = MessageQueue(
+        owner_bank_code=transaction.sender_code,
+        message_type="pacs.002",
+        message_id=e2e_id,
+        payload=xml_data,
+        status="PENDING"
+    )
+    db.add(return_message)
+
+    db.commit()
+
+    # Zwracamy Bankowi potwierdzenie o odebraniu pacs.002
+    return Response(content=generate_pacs002(response_data, "ACTC"), media_type="application/xml", status_code=200)
 
 @router.post("/central-bank/inject", tags=["Bank"])
 def inject_liquidity(injection: LiquidityInjection, db: Session = Depends(get_db)):
+    """Zastrzyk płynności dla zablokowanego banku."""
     bank = db.query(Bank).filter(Bank.bank_code == injection.bank_code).first()
     if not bank:
         raise HTTPException(status_code=404, detail="Institution not found.")

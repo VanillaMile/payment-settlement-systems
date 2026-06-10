@@ -72,7 +72,7 @@ function App() {
 
       {/* Alerty ograniczone do konkretengo banku lub operatora */}
       {Object.entries(banks).map(([c, b]) => (activeTab === 'operator' || activeTab === c) && (b.status === 'BLOCKED' || b.limit_exceeded_at) && (
-        <div key={c} className="alert"><strong>{c}:</strong> {b.status === 'BLOCKED' ? 'INSTITUTION SUSPENDED' : 'CRITICAL LIQUIDITY WARNING (POPUP SIMULATION)'}</div>
+        <div key={c} className="alert"><strong>{c}:</strong> {b.status === 'BLOCKED' ? 'INSTITUTION SUSPENDED' : 'CRITICAL LIQUIDITY WARNING'}</div>
       ))}
 
       <main className="content">

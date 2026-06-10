@@ -1,0 +1,92 @@
+{
+  "data": {
+    "header": {
+      "immediate_destination": "090000515",
+      "immediate_origin": "040104018",
+      "immediate_destination_name": "FRB Tungsten",
+      "immediate_origin_name": "Baguette Bank",
+      "file_creation_date": "260526",
+      "file_creation_time": "1415",
+      "file_id_modifier": "A",
+      "reference_code": "REF20260526"
+    },
+    "batches": [
+      {
+        "header": {
+          "service_class_code": "200",
+          "company_name": "Baguette Client",
+          "company_discretionary_data": "2 entries",
+          "company_identification": "123456789",
+          "standard_entry_class_code": "PPD",
+          "company_entry_description": "LEEKPAY001",
+          "company_descriptive_date": "260526",
+          "effective_entry_date": "260527",
+          "settlement_date": "",
+          "originator_status_code": "1",
+          "originating_dfi_identification": "04010401",
+          "batch_number": "0000001"
+        },
+        "entries": [
+          {
+            "transaction_code": "22",
+            "receiving_dfi_rtn": "010101012",
+            "dfi_account_number": "123456789",
+            "amount_cents": 10000,
+            "individual_id_number": "INV-1001",
+            "individual_name": "Leek Bank Client",
+            "trace_number": "040104010000001",
+            "addenda": [
+              {
+                "addenda_type_code": "05",
+                "payment_related_information": "$100 -> LeekBank client"
+              }
+            ]
+          },
+          {
+            "transaction_code": "27",
+            "receiving_dfi_rtn": "514310008",
+            "dfi_account_number": "987654321",
+            "amount_cents": 3100,
+            "individual_id_number": "INV-1002",
+            "individual_name": "Croissant Bank Client",
+            "trace_number": "040104010000002",
+            "addenda": [
+              {
+                "addenda_type_code": "05",
+                "payment_related_information": "31 <- CroissantBank client"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "header": {
+          "service_class_code": "220",
+          "company_name": "Baguette Store",
+          "company_discretionary_data": "1 entry",
+          "company_identification": "1555666777",
+          "standard_entry_class_code": "CCD",
+          "company_entry_description": "LEEKPAY002",
+          "company_descriptive_date": "260526",
+          "effective_entry_date": "260527",
+          "settlement_date": "",
+          "originator_status_code": "1",
+          "originating_dfi_identification": "04010401",
+          "batch_number": "0000002"
+        },
+        "entries": [
+          {
+            "transaction_code": "22",
+            "receiving_dfi_rtn": "010101012",
+            "dfi_account_number": "111222333",
+            "amount_cents": 31000,
+            "individual_id_number": "INV-2001",
+            "individual_name": "LeekBank",
+            "trace_number": "040104010000004",
+            "addenda": []
+          }
+        ]
+      }
+    ]
+  }
+}

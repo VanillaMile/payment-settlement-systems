@@ -5,3 +5,4 @@ pydantic==2.4.2
 psycopg2-binary==2.9.10
 python-dotenv==1.0.0
 python-multipart==0.0.29
+pandas==3.0.3
