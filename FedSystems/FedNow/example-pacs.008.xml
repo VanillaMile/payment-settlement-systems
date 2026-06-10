@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.008.001.08">
+  <FIToFICstmrCdtTrf>
+    <GrpHdr>
+      <MsgId>MSG-20260526-0001</MsgId>
+      <CreDtTm>2026-05-27T12:00:00</CreDtTm>
+    </GrpHdr>
+    <CdtTrfTxInf>
+      <PmtId>
+        <EndToEndId>E2E-20260526-0001</EndToEndId>
+      </PmtId>
+      <IntrBkSttlmAmt Ccy="USD">1500.50</IntrBkSttlmAmt>
+      
+      <DbtrAgt>
+        <FinInstnId>
+          <ClrSysMmbId>
+            <nm>Baguette bank</nm>
+            <MmbId>040104018</MmbId> <!-- Bank's RTN -->
+          </ClrSysMmbId>
+        </FinInstnId>
+      </DbtrAgt>
+      <Dbtr>
+        <Nm>Tech Solutions Inc.</Nm> <!-- Debtor's name -->
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <Othr>
+            <Id>123456789012</Id>                <!-- customer account number -->
+            <SchmeNm><Prtry>US_ACCT</Prtry></SchmeNm>
+          </Othr>
+        </Id>
+      </DbtrAcct>
+      
+      <CdtrAgt>
+        <FinInstnId>
+          <ClrSysMmbId>
+            <nm>Leek bank</nm> <!-- Cdtr's bank -->
+            <MmbId>010101012</MmbId>
+          </ClrSysMmbId>
+        </FinInstnId>
+      </CdtrAgt>
+      <Cdtr>
+        <Nm>Commerce Bank of NY</Nm> <!-- Beneficiary's name -->
+      </Cdtr>
+      <CdtrAcct>
+        <Id>
+          <Othr>
+            <Id>99988877711231230</Id>             <!-- customer account number -->
+            <SchmeNm><Prtry>US_ACCT</Prtry></SchmeNm>
+          </Othr>
+        </Id>
+      </CdtrAcct>
+      <RmtInf>
+        <Ustrd>Invoice - programming services and software licenses</Ustrd>
+      </RmtInf>
+    </CdtTrfTxInf>
+  </FIToFICstmrCdtTrf>
+</Document>

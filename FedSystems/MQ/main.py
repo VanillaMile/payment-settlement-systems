@@ -49,7 +49,7 @@ async def _send_file_to_fednow(filename: str, contents: bytes) -> dict:
         )
 
     if response.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"FedNow returned HTTP {response.status_code}")
+        raise HTTPException(status_code=502, detail=f"FedNow returned HTTP {response.status_code}" + (f": {response.text}" if response.text else "") + f" {response.details if hasattr(response, 'details') else ''}")
 
     try:
         payload = response.json()
@@ -57,11 +57,14 @@ async def _send_file_to_fednow(filename: str, contents: bytes) -> dict:
         payload = {}
 
     status = str(payload.get("status", "")).strip().lower()
-    if status not in ("received", "recived"):
-        raise HTTPException(status_code=502, detail=payload.get("detail") or f"FedNow rejected file with status {status or 'missing'}")
+    if status not in ("received", "received", "accepted", "accepted", "pending", "pending", "received and sent", "received and sent"):
+        raise HTTPException(status_code=502, detail=payload.get("detail") or f"FedNow rejected file and returned status {status or 'missing'}")
 
     return payload
 
+@message_queue.get("/")
+def root():
+    return {"message": "Welcome to the Message Queue API - use /docs for API documentation"}
 
 @message_queue.get("/health", tags=["Health"])
 def health_check():
