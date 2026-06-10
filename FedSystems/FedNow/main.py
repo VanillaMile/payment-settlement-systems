@@ -94,7 +94,7 @@ def collect_message(file: UploadFile = File(...)):
         processed_content = process_file(contents, file.filename)
         if processed_content is None:
             raise HTTPException(status_code=400, detail="Unsupported XML structure for processing")
-        
+
         if processed_content.get("type") == "pacs.008":
             # Send to receiving bank
             target_bank_rtn = processed_content.get("cdtr_rtn")
@@ -231,16 +231,32 @@ def validate_xml(contents: bytes, filename: str) -> str:
                 # Validate pacs.008 structure
                 msg_id = root.find(".//{*}GrpHdr/{*}MsgId")
                 cdtr_rtn = root.find(".//{*}CdtTrfTxInf/{*}CdtrAgt/{*}FinInstnId/{*}ClrSysMmbId/{*}MmbId")
+                dbtr_rtn = root.find(".//{*}CdtTrfTxInf/{*}DbtrAgt/{*}FinInstnId/{*}ClrSysMmbId/{*}MmbId")
                 amount = root.find(".//{*}CdtTrfTxInf/{*}IntrBkSttlmAmt")
-                if msg_id is None or cdtr_rtn is None or amount is None:
+
+                # check if both rtns are registered banks
+                if cdtr_rtn is not None and cdtr_rtn.text not in banks_ports_map:
+                    raise HTTPException(status_code=400, detail=f"Unknown cdtr bank RTN: {cdtr_rtn.text}")
+                if dbtr_rtn is not None and dbtr_rtn.text not in banks_ports_map:
+                    raise HTTPException(status_code=400, detail=f"Unknown dbtr bank RTN: {dbtr_rtn.text}")
+
+                if msg_id is None or cdtr_rtn is None or dbtr_rtn is None or amount is None:
                     raise HTTPException(status_code=400, detail="Invalid pacs.008 structure")
                 return "Valid pacs.008"
             elif ns == "urn:iso:std:iso:20022:tech:xsd:pacs.002.001.10":
                 # Validate pacs.002 structure
                 msg_id = root.find(".//{*}GrpHdr/{*}MsgId")
                 dbtr_rtn = root.find(".//{*}TxInfAndSts/{*}OrgnlTxRef/{*}DbtrAgt/{*}FinInstnId/{*}ClrSysMmbId/{*}MmbId")
+                cdtr_rtn = root.find(".//{*}TxInfAndSts/{*}OrgnlTxRef/{*}CdtrAgt/{*}FinInstnId/{*}ClrSysMmbId/{*}MmbId")
                 amount = root.find(".//{*}TxInfAndSts/{*}OrgnlTxRef/{*}IntrBkSttlmAmt")
                 status = root.find(".//{*}TxInfAndSts/{*}TxSts")
+
+                # check if both rtns are registered banks
+                if cdtr_rtn is not None and cdtr_rtn.text not in banks_ports_map:
+                    raise HTTPException(status_code=400, detail=f"Unknown cdtr bank RTN: {cdtr_rtn.text}")
+                if dbtr_rtn is not None and dbtr_rtn.text not in banks_ports_map:
+                    raise HTTPException(status_code=400, detail=f"Unknown dbtr bank RTN: {dbtr_rtn.text}")
+
                 if msg_id is None or dbtr_rtn is None or amount is None or status is None:
                     raise HTTPException(status_code=400, detail="Invalid pacs.002 structure")
                 return "Valid pacs.002"
