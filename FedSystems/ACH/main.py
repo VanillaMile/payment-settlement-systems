@@ -386,7 +386,7 @@ ach.add_middleware(
 
 @ach.get("/")
 async def root():
-    return {"message": "FastAPI ACH app running"}
+    return {"message": "Welcome to the ACH API - use /docs for API documentation"}
 
 @ach.get("/health", tags=["Control Panel - http://localhost:3310/"])
 async def health():

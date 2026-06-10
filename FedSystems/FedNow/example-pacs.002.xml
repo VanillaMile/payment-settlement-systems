@@ -21,10 +21,18 @@
 		</OrgnlGrpInfAndSts>
 		<TxInfAndSts>
 			<OrgnlEndToEndId>E2E-20260526-0001</OrgnlEndToEndId> <!-- Refers to the original pacs.008 EndToEndId -->
-			<TxSts>ACCP</TxSts>
+			<TxSts>ACCP</TxSts> <!-- Status of the individual transaction can be: ACCP (Accepted), RJCT (Rejected), PDNG (Pending), BLCK (Blocked), ACTC (Accepted technical validation successful) -->
 			<AcctSvcrRef>REF-20260527-0001</AcctSvcrRef> <!-- Unique reference for this status report transaction -->
 			<OrgnlTxRef>
 				<IntrBkSttlmAmt Ccy="USD">1500.50</IntrBkSttlmAmt> <!-- Get this from pacs.008 IntrBkSttlmAmt -->
+				<DbtrAgt> <!-- Get this from pacs.008 Dbtr Agt -->
+					<FinInstnId>
+						<ClrSysMmbId>
+							<nm>Baguette bank</nm>
+							<MmbId>040104018</MmbId> <!-- Bank's RTN -->
+						</ClrSysMmbId>
+					</FinInstnId>
+				</DbtrAgt>
 				<Dbtr>
 					<Nm>Jan Kowalski</Nm> <!-- Get this from pacs.008 Dbtr -->
 				</Dbtr>
@@ -36,6 +44,14 @@
 						</Othr>
 					</Id>
 				</DbtrAcct>
+				<CdtrAgt> <!-- Get this from pacs.008 cdtr Agt-->
+					<FinInstnId>
+						<ClrSysMmbId>
+							<nm>Leek bank</nm> <!-- Cdtr's bank -->
+							<MmbId>010101012</MmbId>
+						</ClrSysMmbId>
+					</FinInstnId>
+				</CdtrAgt>
 				<Cdtr>
 					<Nm>Firma Handlowa XYZ</Nm> <!-- Get this from pacs.008 Cdtr -->
 				</Cdtr>
