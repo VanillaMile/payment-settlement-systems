@@ -34,7 +34,7 @@
 					</FinInstnId>
 				</DbtrAgt>
 				<Dbtr>
-					<Nm>Jan Kowalski</Nm> <!-- Get this from pacs.008 Dbtr -->
+					<Nm>Teto</Nm> <!-- Get this from pacs.008 Dbtr -->
 				</Dbtr>
 				<DbtrAcct>
 					<Id>
@@ -53,12 +53,12 @@
 					</FinInstnId>
 				</CdtrAgt>
 				<Cdtr>
-					<Nm>Firma Handlowa XYZ</Nm> <!-- Get this from pacs.008 Cdtr -->
+					<Nm>Miku</Nm> <!-- Get this from pacs.008 Cdtr -->
 				</Cdtr>
 				<CdtrAcct>
 					<Id>
 						<Othr>
-							<Id>99988877711231230</Id>              <!-- User account number, get this from pacs.008 CdtrAcct Othr Id -->
+							<Id>333999333999</Id>              <!-- User account number, get this from pacs.008 CdtrAcct Othr Id -->
                             <SchmeNm><Prtry>US_ACCT</Prtry></SchmeNm>
 						</Othr>
 					</Id>

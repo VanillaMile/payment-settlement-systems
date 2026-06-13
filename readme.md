@@ -1,3 +1,14 @@
+# Graphic process guides - FOR INTEGRATION
+
+Inside `payment-settlement-systems` directory you'll find:
+- `ACHProcess.drawio` - For batch processing (BANKS)
+- `FedNowProcessPacs.drawio` For real time money transfer (pacs.008, pacs.002) (BANKS)
+- `FedNowProcessPain.drawio` **WIP** For real time payment request (pain.013, pain.014) (BANKS + Other interested parties)
+
+Most of `readme.md` is repeated in those files where needed.
+
+You can inspect it at https://app.diagrams.net/
+
 # ACH
 
 ## Table of contents
@@ -99,7 +110,7 @@ E,L,5,5000,Invalid Account
 E,L,6,5000,Invalid Account
 ```
 
-## How to start up the server
+## How to start the server
 
 Prerequisites:
 - Python (3.14)
@@ -107,6 +118,20 @@ Prerequisites:
 - ssh-keygen (Usually included with git for windows, test `ssh-keygen` in terminal)
 
 0. (Only once) copy `.env.example` to `.env`
+
+```bash
+git clone https://github.com/VanillaMile/payment-settlement-systems.git
+```
+
+```bash
+cd payment-settlement-systems
+```
+
+```bash
+cd FedSystems
+```
+
+Make `.env`
 
 ```bash
 copy .env.example .env
@@ -481,6 +506,145 @@ You can primarily use these two:
 - Method 2:
     - Use http://localhost:8770/incoming/{filename} to fetch specific file from incoming.
     - Requires user to manually track files and move them out of queue with http://localhost:8770/mark-failed/{filename} or http://localhost:8770/mark-collected/{filename}
+
+## FedNow xml files
+
+- `pacs.008` - Used to send money, issued by debtor bank.
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.008.001.08">
+  <FIToFICstmrCdtTrf>
+    <GrpHdr>
+      <MsgId>MSG-20260526-0001</MsgId>
+      <CreDtTm>2026-05-27T12:00:00</CreDtTm>
+    </GrpHdr>
+    <CdtTrfTxInf>
+      <PmtId>
+        <EndToEndId>E2E-20260526-0001</EndToEndId>
+      </PmtId>
+      <IntrBkSttlmAmt Ccy="USD">1500.50</IntrBkSttlmAmt>
+      
+      <DbtrAgt>
+        <FinInstnId>
+          <ClrSysMmbId>
+            <nm>Baguette bank</nm>
+            <MmbId>040104018</MmbId> <!-- Bank's RTN 9 digits -->
+          </ClrSysMmbId>
+        </FinInstnId>
+      </DbtrAgt>
+      <Dbtr>
+        <Nm>Teto</Nm> <!-- Debtor's name -->
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <Othr>
+            <Id>123456789012</Id>                <!-- customer account number max.17 digits -->
+            <SchmeNm><Prtry>US_ACCT</Prtry></SchmeNm>
+          </Othr>
+        </Id>
+      </DbtrAcct>
+      
+      <CdtrAgt>
+        <FinInstnId>
+          <ClrSysMmbId>
+            <nm>Leek bank</nm> <!-- Cdtr's bank -->
+            <MmbId>010101012</MmbId> <!-- Bank's RTN 9 digits -->
+          </ClrSysMmbId>
+        </FinInstnId>
+      </CdtrAgt>
+      <Cdtr>
+        <Nm>Miku</Nm> <!-- Beneficiary's name -->
+      </Cdtr>
+      <CdtrAcct>
+        <Id>
+          <Othr>
+            <Id>333999333999</Id>             <!-- customer account number max.17 digits -->
+            <SchmeNm><Prtry>US_ACCT</Prtry></SchmeNm>
+          </Othr>
+        </Id>
+      </CdtrAcct>
+      <RmtInf>
+        <Ustrd>Payment for 31 baguettes</Ustrd> <!-- Title -->
+      </RmtInf>
+    </CdtTrfTxInf>
+  </FIToFICstmrCdtTrf>
+</Document>
+```
+
+- `pacs.002` Payment confirmation. Updates the status of payment. Used to inform other party about payment status (example of use: Inform FedNow that you accept the payment, Inform banks that payment was accepted and settled).
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.002.001.10">
+	<FIToFIPmtStsRpt>
+		<GrpHdr>
+			<MsgId>MSG-20260526-0001-STS-0001</MsgId> <!-- Unique to every message -->
+			<CreDtTm>2026-05-27T12:00:00</CreDtTm>
+			<InstgAgt>
+				<FinInstnId>
+					<Nm>Baguette bank</Nm> <!-- Get this from pacs.008 dbtr -->
+				</FinInstnId>
+			</InstgAgt>
+			<InstdAgt>
+				<FinInstnId>
+					<Nm>Leek bank</Nm> <!-- Get this from pacs.008 cdtr -->
+				</FinInstnId>
+			</InstdAgt>
+		</GrpHdr>
+		<OrgnlGrpInfAndSts>
+			<OrgnlMsgId>MSG-20260526-0001</OrgnlMsgId> <!-- Refers to the original pacs.008 message -->
+			<GrpSts>ACCP</GrpSts> <!-- Status of the entire group of transactions can be: ACCP (Accepted), RJCT (Rejected), PDNG (Pending), BLCK (Blocked), ACTC (Accepted technical validation successful) -->
+		</OrgnlGrpInfAndSts>
+		<TxInfAndSts>
+			<OrgnlEndToEndId>E2E-20260526-0001</OrgnlEndToEndId> <!-- Refers to the original pacs.008 EndToEndId -->
+			<TxSts>ACCP</TxSts> <!-- Status of the individual transaction can be: ACCP (Accepted), RJCT (Rejected), PDNG (Pending), BLCK (Blocked), ACTC (Accepted technical validation successful) -->
+			<AcctSvcrRef>REF-20260527-0001</AcctSvcrRef> <!-- Unique reference for this status report transaction -->
+			<OrgnlTxRef>
+				<IntrBkSttlmAmt Ccy="USD">1500.50</IntrBkSttlmAmt> <!-- Get this from pacs.008 IntrBkSttlmAmt -->
+				<DbtrAgt> <!-- Get this from pacs.008 Dbtr Agt -->
+					<FinInstnId>
+						<ClrSysMmbId>
+							<nm>Baguette bank</nm>
+							<MmbId>040104018</MmbId> <!-- Bank's RTN -->
+						</ClrSysMmbId>
+					</FinInstnId>
+				</DbtrAgt>
+				<Dbtr>
+					<Nm>Teto</Nm> <!-- Get this from pacs.008 Dbtr -->
+				</Dbtr>
+				<DbtrAcct>
+					<Id>
+						<Othr>
+							<Id>123456789012</Id>               <!-- User account number, get this from pacs.008 DbtrAcct Othr Id -->
+                            <SchmeNm><Prtry>US_ACCT</Prtry></SchmeNm>
+						</Othr>
+					</Id>
+				</DbtrAcct>
+				<CdtrAgt> <!-- Get this from pacs.008 cdtr Agt-->
+					<FinInstnId>
+						<ClrSysMmbId>
+							<nm>Leek bank</nm> <!-- Cdtr's bank -->
+							<MmbId>010101012</MmbId>
+						</ClrSysMmbId>
+					</FinInstnId>
+				</CdtrAgt>
+				<Cdtr>
+					<Nm>Miku</Nm> <!-- Get this from pacs.008 Cdtr -->
+				</Cdtr>
+				<CdtrAcct>
+					<Id>
+						<Othr>
+							<Id>333999333999</Id>              <!-- User account number, get this from pacs.008 CdtrAcct Othr Id -->
+                            <SchmeNm><Prtry>US_ACCT</Prtry></SchmeNm>
+						</Othr>
+					</Id>
+				</CdtrAcct>
+			</OrgnlTxRef>
+		</TxInfAndSts>
+	</FIToFIPmtStsRpt>
+</Document>
+```
 
 # RTP System
 
