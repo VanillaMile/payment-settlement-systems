@@ -10,19 +10,22 @@
           <xs:complexType>
             <xs:sequence>
               <xs:element name="GrpHdr">
-                <xs:complexType><xs:sequence>
-                  <xs:element name="MsgId" type="xs:string"/>
-                  <xs:any processContents="skip" minOccurs="0" maxOccurs="unbounded"/>
-                </xs:sequence></xs:complexType>
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element name="MsgId" type="xs:string"/>
+                    <xs:element name="CreDtTm" type="xs:dateTime"/>
+                  </xs:sequence>
+                </xs:complexType>
               </xs:element>
-              <xs:element name="CdtTrfTxInf" maxOccurs="unbounded">
+              <xs:element name="CdtTrfTxInf">
                 <xs:complexType>
                   <xs:sequence>
                     <xs:element name="PmtId">
-                      <xs:complexType><xs:sequence>
-                        <xs:element name="EndToEndId" type="xs:string"/>
-                        <xs:any processContents="skip" minOccurs="0" maxOccurs="unbounded"/>
-                      </xs:sequence></xs:complexType>
+                      <xs:complexType>
+                        <xs:sequence>
+                          <xs:element name="EndToEndId" type="xs:string"/>
+                        </xs:sequence>
+                      </xs:complexType>
                     </xs:element>
                     <xs:element name="IntrBkSttlmAmt">
                       <xs:complexType>
@@ -33,15 +36,76 @@
                         </xs:simpleContent>
                       </xs:complexType>
                     </xs:element>
-                    <xs:any processContents="skip" minOccurs="0" maxOccurs="unbounded"/>
+                    <xs:element name="DbtrAgt" type="BankInfo"/>
+                    <xs:element name="Dbtr" type="PartyInfo"/>
+                    <xs:element name="DbtrAcct" type="AcctInfo"/>
+                    <xs:element name="CdtrAgt" type="BankInfo"/>
+                    <xs:element name="Cdtr" type="PartyInfo"/>
+                    <xs:element name="CdtrAcct" type="AcctInfo"/>
+                    <xs:element name="RmtInf">
+                      <xs:complexType>
+                        <xs:sequence>
+                          <xs:element name="Ustrd" type="xs:string"/>
+                        </xs:sequence>
+                      </xs:complexType>
+                    </xs:element>
                   </xs:sequence>
                 </xs:complexType>
               </xs:element>
-              <xs:any processContents="skip" minOccurs="0" maxOccurs="unbounded"/>
             </xs:sequence>
           </xs:complexType>
         </xs:element>
       </xs:sequence>
     </xs:complexType>
   </xs:element>
+
+  <xs:complexType name="BankInfo">
+    <xs:sequence>
+      <xs:element name="FinInstnId">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="ClrSysMmbId">
+              <xs:complexType>
+                <xs:sequence>
+                  <xs:element name="nm" type="xs:string"/>
+                  <xs:element name="MmbId" type="xs:string"/>
+                </xs:sequence>
+              </xs:complexType>
+            </xs:element>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="PartyInfo">
+    <xs:sequence>
+      <xs:element name="Nm" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="AcctInfo">
+    <xs:sequence>
+      <xs:element name="Id">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="Othr">
+              <xs:complexType>
+                <xs:sequence>
+                  <xs:element name="Id" type="xs:string"/>
+                  <xs:element name="SchmeNm">
+                    <xs:complexType>
+                      <xs:sequence>
+                        <xs:element name="Prtry" type="xs:string"/>
+                      </xs:sequence>
+                    </xs:complexType>
+                  </xs:element>
+                </xs:sequence>
+              </xs:complexType>
+            </xs:element>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
 </xs:schema>

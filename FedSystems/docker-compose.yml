@@ -100,6 +100,8 @@ services:
     ports:
       - "${APP_FEDNOW_PORT}:8000"
     environment:
+      - DEBUG=${DEBUG}
+      - XSD_VALIDATION=${XSD_VALIDATION}
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - REACT_PORT=${REACT_PORT}
       - VITE_PORT=${VITE_PORT}
@@ -129,6 +131,9 @@ services:
       - MQ_BANK3_PORT=${MQ_BANK3_PORT}
       - MQ_BANK4_PORT=${MQ_BANK4_PORT}
       - MQ_BANK5_PORT=${MQ_BANK5_PORT}
+      - MQ_MERCHANT0_PORT=${MQ_MERCHANT0_PORT}
+      - MERCHANT0_NAME=${MERCHANT0_NAME}
+      - MQ_MERCHANT0_URL=http://message-queue-merchant0-client:8000
     depends_on:
       - postgres
     volumes:
@@ -180,6 +185,7 @@ services:
       - FRB_LEGAL_NAME=${FRB_LEGAL_NAME}
       - MQ_BANK_NAME=${BANK0}
       - MQ_BANK_RTN=${BANK0_RTN}
+      - MQ_PORT=${MQ_BANK0_PORT}
 
   message-queue-bank1-client:
     <<: *message-queue-base
@@ -192,6 +198,7 @@ services:
       - FRB_LEGAL_NAME=${FRB_LEGAL_NAME}
       - MQ_BANK_NAME=${BANK1}
       - MQ_BANK_RTN=${BANK1_RTN}
+      - MQ_PORT=${MQ_BANK1_PORT}
 
   message-queue-bank2-client:
     <<: *message-queue-base
@@ -204,6 +211,7 @@ services:
       - FRB_LEGAL_NAME=${FRB_LEGAL_NAME}
       - MQ_BANK_NAME=${BANK2}
       - MQ_BANK_RTN=${BANK2_RTN}
+      - MQ_PORT=${MQ_BANK2_PORT}
 
   message-queue-bank3-client:
     <<: *message-queue-base
@@ -216,6 +224,7 @@ services:
       - FRB_LEGAL_NAME=${FRB_LEGAL_NAME}
       - MQ_BANK_NAME=${BANK3}
       - MQ_BANK_RTN=${BANK3_RTN}
+      - MQ_PORT=${MQ_BANK3_PORT}
 
   message-queue-bank4-client:
     <<: *message-queue-base
@@ -228,6 +237,7 @@ services:
       - FRB_LEGAL_NAME=${FRB_LEGAL_NAME}
       - MQ_BANK_NAME=${BANK4}
       - MQ_BANK_RTN=${BANK4_RTN}
+      - MQ_PORT=${MQ_BANK4_PORT}
 
   message-queue-bank5-client:
     <<: *message-queue-base
@@ -240,6 +250,20 @@ services:
       - FRB_LEGAL_NAME=${FRB_LEGAL_NAME}
       - MQ_BANK_NAME=${BANK5}
       - MQ_BANK_RTN=${BANK5_RTN}
+      - MQ_PORT=${MQ_BANK5_PORT}
+
+  message-queue-merchant0-client:
+    <<: *message-queue-base
+    ports:
+      - "${MQ_MERCHANT0_PORT}:8000"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - FEDNOW_API_BASE_URL=http://fednow-backend:8000
+      - FRB_ROUTING_NUMBER=${FRB_ROUTING_NUMBER}
+      - FRB_LEGAL_NAME=${FRB_LEGAL_NAME}
+      - MQ_BANK_NAME=${MERCHANT0_NAME}
+      - MQ_BANK_RTN=000000001
+      - MQ_PORT=${MQ_MERCHANT0_PORT}
 
 volumes:
   postgres_data:

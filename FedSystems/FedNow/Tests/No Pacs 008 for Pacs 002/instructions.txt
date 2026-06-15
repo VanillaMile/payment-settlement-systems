@@ -1,0 +1,8 @@
+Make sure to clear the previous data:
+
+docker-compose down -v
+docker-compose up --build
+
+Assuming default .env (steps a,b... are used to check if everything updates correctly, they are not required to test messages):
+
+1. example-pacs.002 -> /send from Leek bank MQ (http://localhost:8770/docs) = 502, Bad Gateway = FedNow returned HTTP 400: {\"detail\":\"No matching pending or completed message found for pacs.002 with EndToEndId: E2E-20260526-0002. pacs.002 should always be related to a pacs.008.\"}

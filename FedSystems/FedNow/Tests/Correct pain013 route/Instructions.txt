@@ -1,0 +1,22 @@
+Make sure to clear the previous data:
+
+docker-compose down -v
+docker-compose up --build
+
+Assuming default .env (steps a,b... are used to check if everything updates correctly, they are not required to test messages):
+
+1. http://localhost:8713/docs (Merchant MQ) -> /send pain.013
+1a. http://localhost:8514/docs (FedNow Backend) -> /messages/pending will return a list of all pending messages, it should have 1 message as PDNG
+1b. http://localhost:8770/docs (Baguette Bank MQ) -> /FIFO/out returns pain.013 file, than after 1s nothing.
+2. http://localhost:8770/docs (Baguette Bank MQ) -> /send pain.014 with ACCP status
+2a. http://localhost:8514/docs (FedNow Backend) -> /messages/pending updated with pain.014
+2b. http://localhost:8713/docs (Merchant MQ) -> /FIFO/out returns pain.014 than after 1s nothing.
+3. http://localhost:8770/docs (Baguette Bank MQ) -> /send pacs.008 with payment information from pain.013 and EndToEndId from pain.013
+3a. http://localhost:8514/docs (FedNow Backend) -> /messages/pending updated with pacs.008
+3b. http://localhost:8771/docs (Leek Bank MQ) -> /FIFO/out returns pacs.008 than after 1s nothing.
+4. http://localhost:8771/docs (Leek Bank MQ)-> /send pacs.002 with the same EndToEndId from pacs.008
+4a. http://localhost:8514/docs (FedNow Backend) -> /messages/pending should be empty, instead /messages/complete will have the message with status ACCP
+4b. http://localhost:8771/docs (Leek Bank MQ) -> /FIFO/Out returns pacs.002 with ACCP than after 1s nothing
+4c. http://localhost:8770/docs (Baguette Bank MQ) -> /FIFO/Out returns pacs.002 with ACCP than after 1s nothing
+4d. http://localhost:8713/docs (Merchant MQ) -> /FIFO/Out returns pacs.002 with ACCP than after 1s nothing
+4e. http://localhost:3310/ Current balance for banks is $9,998,499.50 for baguette bank and $10,001,500.50 for leek bank

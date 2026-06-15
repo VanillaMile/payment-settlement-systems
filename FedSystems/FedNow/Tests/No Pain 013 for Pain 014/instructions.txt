@@ -1,0 +1,8 @@
+Make sure to clear the previous data:
+
+docker-compose down -v
+docker-compose up --build
+
+Assuming default .env (steps a,b... are used to check if everything updates correctly, they are not required to test messages):
+
+1. example-pain.014 -> /send from any MQ (http://localhost:8770/docs) =  502, Bad Gateway = FedNow returned HTTP 400: {\"detail\":\"No interested parties found for pain.014 message with EndToEndId: E2E-20260526-0002. EndToEndId should match that of a pain.013 message.\"}

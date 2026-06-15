@@ -1,0 +1,12 @@
+Make sure to clear the previous data:
+
+docker-compose down -v
+docker-compose up --build
+
+Assuming default .env (steps a,b... are used to check if everything updates correctly, they are not required to test messages):
+
+!! Can be turned off with XSD_VALIDATION set to false in .env !!
+1. bad-structure-pain.013 -> /send Merchant MQ (http://localhost:8713/docs) -> 502, Bad Gateway = FedNow returned HTTP 400: {\"detail\":\"pain.013 XML does not conform to schema: [\\\"<string>:11:0:ERROR:SCHEMASV:SCHEMAV_ELEMENT_CONTENT: Element '{urn:iso:std:iso:20022:tech:xsd:pain.013.001.07}Cdtr': Missing child element(s). Expected is ( {urn:iso:std:iso:20022:tech:xsd:pain.013.001.07}Nm ).\\\"]\"}
+
+2. bad-RTN-pain.013 -> /send Merchant MQ (http://localhost:8713/docs) -> 502, Bad Gateway = FedNow returned HTTP 400: {\"detail\":\"Unknown bank RTN(s): 123123123\"}
+

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.014.001.07">
+  <CdtrPmtActvtnRpt>
+    <GrpHdr>
+      <MsgId>MSG-20260526-RPT-0001</MsgId>
+      <CreDtTm>2026-05-27T12:05:00</CreDtTm>
+    </GrpHdr>
+    <OrgnlGrpInfAndSts>
+      <OrgnlMsgId>MSG-20260526-RFP-0001</OrgnlMsgId>
+      <GrpSts>RJCT</GrpSts> <!-- Status: ACCP (Accepted), RJCT (Rejected), PDNG (Pending) -->
+    </OrgnlGrpInfAndSts>
+    <TxInfAndSts>
+      <StsId>STS-20260526-0001</StsId>
+      <OrgnlEndToEndId>E2E-20260526-0001</OrgnlEndToEndId> <!-- Links back to the pain.013 and pacs.008 and pacs.002 -->
+      <TxSts>RJCT</TxSts> <!-- Status of individual request -->
+      <AccptncDtTm>2026-05-27T12:04:00</AccptncDtTm>
+    </TxInfAndSts>
+  </CdtrPmtActvtnRpt>
+</Document>

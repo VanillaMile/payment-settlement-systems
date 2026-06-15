@@ -1,0 +1,15 @@
+Make sure to clear the previous data:
+
+docker-compose down -v
+docker-compose up --build
+
+Assuming default .env (steps a,b... are used to check if everything updates correctly, they are not required to test messages):
+
+1. http://localhost:8713/docs (Merchant MQ) -> /send pain.013
+1a. http://localhost:8514/docs (FedNow Backend) -> /messages/pending will return a list of all pending messages, it should have 1 message as PDNG
+1b. http://localhost:8770/docs (Baguette Bank MQ) -> /FIFO/out returns pain.013 file, than after 1s nothing.
+2. http://localhost:8770/docs (Baguette Bank MQ) -> /send pain.014 with RJCT status
+2a. http://localhost:8514/docs (FedNow Backend) -> /messages/complete message with RJCT moves from pending to complete with RJCT status
+2b. http://localhost:8713/docs (Merchant MQ) -> /FIFO/out returns pain.014 with RJCT status than after 1s nothing.
+
+There is no pacs.008 because dbtr bank rejected the request.
