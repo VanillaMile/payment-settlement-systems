@@ -46,7 +46,10 @@ async def _send_file_to_fednow(filename: str, contents: bytes) -> dict:
         response = await client.post(
             f"{FEDNOW_API_BASE_URL}/collect",
             files={"file": (filename, contents, "application/xml")},
+            data={"sender_port": os.environ.get("MQ_PORT", "0000")},
         )
+
+    print(f"Sent with sender_port: {os.environ.get('MQ_PORT', '0000')}, received HTTP {response.status_code} from FedNow")
 
     if response.status_code != 200:
         raise HTTPException(status_code=502, detail=f"FedNow returned HTTP {response.status_code}" + (f": {response.text}" if response.text else "") + f" {response.details if hasattr(response, 'details') else ''}")
@@ -271,6 +274,8 @@ def mark_collected(filename: str):
         raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
+    
+returned_file_names = set()
 
 @message_queue.get("/FIFO/out", tags=["Files"])
 def get_fifo_out():
@@ -297,10 +302,21 @@ def get_fifo_out():
         if not candidates:
             raise HTTPException(status_code=404, detail="No files in FIFO queue")
 
+        # Ensure we don't return files that have already been returned in this session
+        for candidate in candidates:
+            if candidate[0] in returned_file_names:
+                candidates.remove(candidate)
+                continue
+
         # Select the oldest file by modification time (mtime)
         next_file = min(candidates, key=lambda t: t[1])[0]
         src = os.path.join("incoming", next_file)
         dst = os.path.join("collected", next_file)
+
+        returned_file_names.add(next_file[0])
+
+        print(f"File {next_file} moved.")
+        print(f"Files remaining in incoming: {os.listdir('incoming')}")
 
         try:
             os.replace(src, dst)
@@ -309,7 +325,7 @@ def get_fifo_out():
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc))
 
-        return FileResponse(dst, filename=next_file, media_type="application/xml")
+        return FileResponse(dst, filename=next_file, media_type="application/xml", headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"})
     except HTTPException:
         raise
     except Exception as exc:
