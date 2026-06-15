@@ -1,0 +1,15 @@
+Make sure to clear the previous data:
+
+docker-compose down -v
+docker-compose up --build
+
+Assuming default .env (steps a,b... are used to check if everything updates correctly, they are not required to test messages):
+
+1. bad-RTN-pacs.008 -> /send from any Bank MQ (http://localhost:8770/docs) -> 502, Bad Gateway = FedNow returned HTTP 400: {\"detail\":\"Unknown bank RTN(s): 111222333\"} 
+
+
+!! Can be turned off with XSD_VALIDATION set to false in .env !!
+2. bad-structure-RTN-pacs.008 -> /send Baguette Bank MQ (http://localhost:8770/docs) -> 502, Bad Gateway = FedNow returned HTTP 400: {\"detail\":\"pacs.008 XML does not conform to schema: [\\\"<string>:22:0:ERROR:SCHEMASV:SCHEMAV_ELEMENT_CONTENT: Element '{urn:iso:std:iso:20022:tech:xsd:pacs.008.001.08}Dbtr': Missing child element(s). Expected is ( {urn:iso:std:iso:20022:tech:xsd:pacs.008.001.08}Nm ).\\\"]\"}
+
+
+3. unauthorized-RTN-pacs.008 -> /send Baguette Bank MQ (http://localhost:8770/docs) -> 502, Bad Gateway = FedNow returned HTTP 400: {\"detail\":\"You are not authorized to send pacs.008 message with this dbtr rtn. Sender port 8770 does not match expected port 8771 for debtor RTN 010101012. Check /bank-info and make sure you're using the correct MQ for your bank.\"} 

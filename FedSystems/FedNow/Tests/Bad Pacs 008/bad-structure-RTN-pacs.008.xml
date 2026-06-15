@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.008.001.08">
+  <FIToFICstmrCdtTrf>
+    <GrpHdr>
+      <MsgId>MSG-20260526-0001</MsgId>
+      <CreDtTm>2026-05-27T12:00:00</CreDtTm>
+    </GrpHdr>
+    <CdtTrfTxInf>
+      <PmtId>
+        <EndToEndId>E2E-20260526-0001</EndToEndId>
+      </PmtId>
+      <IntrBkSttlmAmt Ccy="USD">1500.50</IntrBkSttlmAmt>
+      
+      <DbtrAgt>
+        <FinInstnId>
+          <ClrSysMmbId>
+            <nm>Baguette bank</nm>
+            <MmbId>040104018</MmbId> <!-- Bank's RTN 9 digits -->
+          </ClrSysMmbId>
+        </FinInstnId>
+      </DbtrAgt>
+      <Dbtr>
+
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <Othr>
+            <Id>123456789012</Id>                <!-- customer account number max.17 digits -->
+            <SchmeNm><Prtry>US_ACCT</Prtry></SchmeNm>
+          </Othr>
+        </Id>
+      </DbtrAcct>
+      
+      <CdtrAgt>
+        <FinInstnId>
+          <ClrSysMmbId>
+            <nm>Leek bank</nm> <!-- Cdtr's bank -->
+            <MmbId>010101012</MmbId> <!-- Bank's RTN 9 digits -->
+          </ClrSysMmbId>
+        </FinInstnId>
+      </CdtrAgt>
+      <Cdtr>
+        <Nm>Miku</Nm> <!-- Beneficiary's name -->
+      </Cdtr>
+      <CdtrAcct>
+        <Id>
+          <Othr>
+            <Id>333999333999</Id>             <!-- customer account number max.17 digits -->
+            <SchmeNm><Prtry>US_ACCT</Prtry></SchmeNm>
+          </Othr>
+        </Id>
+      </CdtrAcct>
+      <RmtInf>
+        <Ustrd>Payment for 31 baguettes</Ustrd> <!-- Unstructured remittance information, Title -->
+      </RmtInf>
+    </CdtTrfTxInf>
+  </FIToFICstmrCdtTrf>
+</Document>

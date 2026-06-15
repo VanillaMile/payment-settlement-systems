@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.002.001.10">
+	<FIToFIPmtStsRpt>
+		<GrpHdr>
+			<MsgId>MSG-20260526-0001-STS-0001</MsgId> <!-- Unique to every message -->
+			<CreDtTm>2026-05-27T12:00:00</CreDtTm>
+			<InstgAgt>
+				<FinInstnId>
+					<Nm>Baguette bank</Nm> <!-- Get this from pacs.008 dbtr -->
+				</FinInstnId>
+			</InstgAgt>
+			<InstdAgt>
+				<FinInstnId>
+					<Nm>Leek bank</Nm> <!-- Get this from pacs.008 cdtr -->
+				</FinInstnId>
+			</InstdAgt>
+		</GrpHdr>
+		<OrgnlGrpInfAndSts>
+			<OrgnlMsgId>MSG-20260526-0001</OrgnlMsgId> <!-- Refers to the original pacs.008 message -->
+			<GrpSts>ACCP</GrpSts> <!-- Status of the entire group of transactions can be: ACCP (Accepted), RJCT (Rejected), PDNG (Pending), BLCK (Blocked), ACTC (Accepted technical validation successful) -->
+		</OrgnlGrpInfAndSts>
+		<TxInfAndSts>
+			<OrgnlEndToEndId>E2E-20260526-0002</OrgnlEndToEndId> <!-- Refers to the original pacs.008 EndToEndId -->
+			<TxSts>ACCP</TxSts> <!-- Status of the individual transaction can be: ACCP (Accepted), RJCT (Rejected), PDNG (Pending), BLCK (Blocked), ACTC (Accepted technical validation successful) -->
+			<AcctSvcrRef>REF-20260527-0001</AcctSvcrRef> <!-- Unique reference for this status report transaction -->
+			<OrgnlTxRef>
+				<IntrBkSttlmAmt Ccy="USD">1500.50</IntrBkSttlmAmt> <!-- Get this from pacs.008 IntrBkSttlmAmt -->
+				<DbtrAgt> <!-- Get this from pacs.008 Dbtr Agt -->
+					<FinInstnId>
+						<ClrSysMmbId>
+							<nm>Baguette bank</nm>
+							<MmbId>040104018</MmbId> <!-- Bank's RTN -->
+						</ClrSysMmbId>
+					</FinInstnId>
+				</DbtrAgt>
+				<Dbtr>
+					<Nm>Teto</Nm> <!-- Get this from pacs.008 Dbtr -->
+				</Dbtr>
+				<DbtrAcct>
+					<Id>
+						<Othr>
+							<Id>123456789012</Id>               <!-- User account number, get this from pacs.008 DbtrAcct Othr Id -->
+                            <SchmeNm><Prtry>US_ACCT</Prtry></SchmeNm>
+						</Othr>
+					</Id>
+				</DbtrAcct>
+				<CdtrAgt> <!-- Get this from pacs.008 cdtr Agt-->
+					<FinInstnId>
+						<ClrSysMmbId>
+							<nm>Leek bank</nm> <!-- Cdtr's bank -->
+							<MmbId>010101012</MmbId>
+						</ClrSysMmbId>
+					</FinInstnId>
+				</CdtrAgt>
+				<Cdtr>
+					<Nm>Miku</Nm> <!-- Get this from pacs.008 Cdtr -->
+				</Cdtr>
+				<CdtrAcct>
+					<Id>
+						<Othr>
+							<Id>333999333999</Id>              <!-- User account number, get this from pacs.008 CdtrAcct Othr Id -->
+                            <SchmeNm><Prtry>US_ACCT</Prtry></SchmeNm>
+						</Othr>
+					</Id>
+				</CdtrAcct>
+			</OrgnlTxRef>
+		</TxInfAndSts>
+	</FIToFIPmtStsRpt>
+</Document>

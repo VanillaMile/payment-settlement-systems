@@ -1,0 +1,15 @@
+Make sure to clear the previous data:
+
+docker-compose down -v
+docker-compose up --build
+
+Assuming default .env (steps a,b... are used to check if everything updates correctly, they are not required to test messages):
+
+1. http://localhost:8770/docs (Baguette Bank MQ) -> /send pacs.008
+1a. http://localhost:8771/docs (Leek Bank MQ) -> /FIFO/out should return pacs.002
+1b. http://localhost:8514/docs (FedNow Backend) -> /messages/pending should have a PDNG message with pacs.008 attached.
+2. http://localhost:8771/docs (Leek Bank MQ) -> /send pacs.002
+2a. http://localhost:8771/docs (Leek Bank MQ) -> /FIFO/out returns pacs.002 with status ACCP
+2b. http://localhost:8770/docs (Baguette Bank MQ) -> /FIFO/out returns pacs.002 with status ACCP
+2c. http://localhost:8514/docs (FedNow Backend) -> /messages/pending should be empty, instead /messages/complete will have the message with status ACCP
+2d. http://localhost:3310/ Current balance for banks is $9,998,499.50 for baguette bank and $10,001,500.50 for leek bank

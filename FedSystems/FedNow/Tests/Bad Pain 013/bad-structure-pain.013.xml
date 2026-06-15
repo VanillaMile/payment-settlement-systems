@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.013.001.07">
+  <CdtrPmtActvtnReq>
+    <GrpHdr>
+      <MsgId>MSG-20260526-RFP-0001</MsgId>
+      <CreDtTm>2026-05-27T12:00:00</CreDtTm>
+    </GrpHdr>
+    <PmtInf>
+      <PmtInfId>PI-20260526-0001</PmtInfId>
+      <PmtMtd>TRA</PmtMtd> <!-- Transfer -->
+      <Cdtr>
+
+      </Cdtr>
+      <CdtrAcct>
+        <Id>
+          <Othr>
+            <Id>333999333999</Id>
+            <SchmeNm><Prtry>US_ACCT</Prtry></SchmeNm>
+          </Othr>
+        </Id>
+      </CdtrAcct>
+      <CdtrAgt>
+        <FinInstnId>
+          <ClrSysMmbId>
+            <nm>Leek bank</nm>
+            <MmbId>010101012</MmbId>
+          </ClrSysMmbId>
+        </FinInstnId>
+      </CdtrAgt>
+      <DrctDbtTxInf>
+        <PmtId>
+          <EndToEndId>E2E-20260526-0001</EndToEndId>
+        </PmtId>
+        <InstdAmt Ccy="USD">1500.50</InstdAmt>
+        <Dbtr>
+          <Nm>Teto</Nm>
+        </Dbtr>
+        <DbtrAcct>
+          <Id>
+            <Othr>
+              <Id>123456789012</Id>
+              <SchmeNm><Prtry>US_ACCT</Prtry></SchmeNm>
+            </Othr>
+          </Id>
+        </DbtrAcct>
+        <DbtrAgt>
+          <FinInstnId>
+            <ClrSysMmbId>
+              <nm>Baguette bank</nm>
+              <MmbId>040104018</MmbId>
+            </ClrSysMmbId>
+          </FinInstnId>
+        </DbtrAgt>
+        <RmtInf>
+          <Ustrd>Payment for 31 baguettes</Ustrd>
+        </RmtInf>
+      </DrctDbtTxInf>
+    </PmtInf>
+  </CdtrPmtActvtnReq>
+</Document>
