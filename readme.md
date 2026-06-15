@@ -1,13 +1,50 @@
-# Graphic process guides - FOR INTEGRATION
+# Visual process guides - FOR INTEGRATION
 
 Inside `payment-settlement-systems` directory you'll find:
 - `ACHProcess.drawio` - For batch processing (BANKS)
 - `FedNowProcessPacs.drawio` For real time money transfer (pacs.008, pacs.002) (BANKS)
-- `FedNowProcessPain.drawio` **WIP** For real time payment request (pain.013, pain.014) (BANKS + Other interested parties)
+- `FedNowProcessPain.drawio` For real time payment request (pain.013, pain.014) (BANKS + Others)
 
 Most of `readme.md` is repeated in those files where needed.
 
 You can inspect it at https://app.diagrams.net/
+
+# Integration checklist (for banks and other):
+
+1. ACH:
+- [ ] Store transactions until ready, see example database table at `ACHProcess.drawio`.
+- [ ] Convert database transactions to `.json` and convert to `.ach` with (http://localhost:8310/json-to-ach) or generate `.ach` directly in your system.
+- [ ] **Optional** Automatically send `.ach` to your SFTP account `inbound` directory. (can be done manually instead)
+- [ ] **Optional** Automatically read `.ach` from you SFTP account `outbound` directory. (can be done manually instead)
+- [ ] Interpret `.ach` in your system and apply incoming transaction.
+- [ ] 3 days after sending `.ach` mark your previous transactions as settled. (No confirmation is provided)
+
+2. FedNow (Related payments should have the same EndToEndId)
+- Banks:
+  - [ ] Generate xml: `pacs.008`, `pacs.002`, `pain.014`
+  - [ ] Read xml: `pacs.008`, `pacs.002`, `pain.013`
+  - [ ] Send xmls to your MQ /send endpoint
+  - [ ] Read xmls from your MQ /FIFO/out endpoint (call this endpoint at least every 1s)
+  - [ ] **Optional** Generate `pain.013` and read `pain.014` if you want to perform
+  - Support files:
+    - [ ] `pacs.008` - Generate it and /send when making a new transaction. (Remember to save EndToEndId). Respond with `pacs.002` to this message, either accepting or rejecting the transfer.
+    - [ ] `pacs.002` - Read it and update transaction with this EndToEnd to settled or rejected.
+    - [ ] `pain.013` - Payment request, read it and either accept it or reject it. When accepting make a new `pacs.008` transaction with EndToEndId from `pain.013`. Generate `pain.014` as response to `pain.013`.
+    - [ ] `pain.014` - Response to `pain.013`.
+
+- Other (for initiating payment using FedNow system):
+  - [ ] Connect with Merchant MQ (by default: http://localhost:8713/docs)
+  - [ ] Connect with `/send` and `/FIFO/out` of your MQ 
+  - [ ] Generate and /send `pain.013` to initiate payment
+  - [ ] Call `/FIFO/out` at least every 1s to listen for `pain.014` and `pacs.002` files.
+  - [ ] Read and interpret `pain.014` report status. (This will confirm if bank accepts your payment request, it's not a payment confirmation)
+  - [ ] Read and interpret `pacs.002` status. (This confirms or rejects funds transfer)
+
+# Systems
+
+- [ACH](#ach)
+- [FedNow](#fednow)
+- [RTP](#rtp-system)
 
 # ACH
 
@@ -507,6 +544,12 @@ You can primarily use these two:
     - Use http://localhost:8770/incoming/{filename} to fetch specific file from incoming.
     - Requires user to manually track files and move them out of queue with http://localhost:8770/mark-failed/{filename} or http://localhost:8770/mark-collected/{filename}
 
+## Additional API
+
+- http://localhost:8514/banks - Returns a list of participating banks with RTN, Bank name and port.
+
+You should not call `/collect` and `/send-message` directly. Use [MQ](#how-to-access-your-dedicated-client) instead.
+
 ## FedNow xml files
 
 - `pacs.008` - Used to send money, issued by debtor bank.
@@ -645,6 +688,90 @@ You can primarily use these two:
 	</FIToFIPmtStsRpt>
 </Document>
 ```
+
+- `pain.013` - Payment activation request. Requests a movemvent of funds. Used to request payment from a bank. (Example of use: Independent payment system wants to initiate payment from Account 123123123 at Bank A to account 321321321 at bank B through FedNow)
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.013.001.07">
+  <CdtrPmtActvtnReq>
+    <GrpHdr>
+      <MsgId>MSG-20260526-RFP-0001</MsgId>
+      <CreDtTm>2026-05-27T12:00:00</CreDtTm>
+    </GrpHdr>
+    <PmtInf>
+      <PmtInfId>PI-20260526-0001</PmtInfId>
+      <PmtMtd>TRA</PmtMtd> <!-- Transfer -->
+      <Cdtr>
+        <Nm>Miku</Nm>
+      </Cdtr>
+      <CdtrAcct>
+        <Id>
+          <Othr>
+            <Id>333999333999</Id>
+            <SchmeNm><Prtry>US_ACCT</Prtry></SchmeNm>
+          </Othr>
+        </Id>
+      </CdtrAcct>
+      <CdtrAgt>
+        <FinInstnId>
+          <ClrSysMmbId>
+            <nm>Leek bank</nm>
+            <MmbId>010101012</MmbId>
+          </ClrSysMmbId>
+        </FinInstnId>
+      </CdtrAgt>
+      <DrctDbtTxInf>
+        <PmtId>
+          <EndToEndId>E2E-20260526-0001</EndToEndId>
+        </PmtId>
+        <InstdAmt Ccy="USD">1500.50</InstdAmt>
+        <Dbtr>
+          <Nm>Teto</Nm>
+        </Dbtr>
+        <DbtrAcct>
+          <Id>
+            <Othr>
+              <Id>123456789012</Id>
+              <SchmeNm><Prtry>US_ACCT</Prtry></SchmeNm>
+            </Othr>
+          </Id>
+        </DbtrAcct>
+        <DbtrAgt>
+          <FinInstnId>
+            <ClrSysMmbId>
+              <nm>Baguette bank</nm>
+              <MmbId>040104018</MmbId>
+            </ClrSysMmbId>
+          </FinInstnId>
+        </DbtrAgt>
+        <RmtInf>
+          <Ustrd>Payment for 31 baguettes</Ustrd>
+        </RmtInf>
+      </DrctDbtTxInf>
+    </PmtInf>
+  </CdtrPmtActvtnReq>
+</Document>
+```
+
+- `pain.014` - Payment activation request status report. Status report for `pain.013` request message. Used to confirm, reject or block `pain.013` request. **THIS IS NOT PAYMENT TRANSFER CONFIRMATION** This message confirms the bank received your `pain.013` message, and will transfer the money (in this case with pacs.008) the payment might still be rejected during this process. When transfer is complete, you will receive `pacs.002`.
+
+## What to implement
+
+As banks:
+- Connect with `/send` and `/FIFO/out` of your MQ
+- Send and receive files with `/send` and `/FIFO/out` of your MQ
+- Read and interpret `pain.013`, `pacs.008`, `pacs.002`
+- Generate `pain.014`, `pacs.008`, `pacs.002`
+
+Optional:
+- You can generate `pain.013` if you want to support request payment functionality (You will be required to read and interpret `pain.014` too)
+
+Other (if you want to initiate payment through FedNow):
+- Connect with Merchant MQ (By default: http://localhost:8713/docs), connect with `/send` and `/FIFO/out`
+- Send and receive files with `/send` and `/FIFO/out` of your MQ
+- Generate `pain.013` to initiate payment
+- Read and interpret `pain.014` and `pacs.002`. (`pain.014` confirms the bank received your message, `pacs.002` confirms the funds transfer)
 
 # RTP System
 
