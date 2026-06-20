@@ -124,12 +124,12 @@ port_maps = {
 }
 
 port_to_name_map = {
-    MQ_BANK0_PORT: MQ_BANK0_LEGAL_NAME,
-    MQ_BANK1_PORT: MQ_BANK1_LEGAL_NAME,
-    MQ_BANK2_PORT: MQ_BANK2_LEGAL_NAME,
-    MQ_BANK3_PORT: MQ_BANK3_LEGAL_NAME,
-    MQ_BANK4_PORT: MQ_BANK4_LEGAL_NAME,
-    MQ_BANK5_PORT: MQ_BANK5_LEGAL_NAME,
+    MQ_BANK0_PORT: MQ_BANK0_RTN,
+    MQ_BANK1_PORT: MQ_BANK1_RTN,
+    MQ_BANK2_PORT: MQ_BANK2_RTN,
+    MQ_BANK3_PORT: MQ_BANK3_RTN,
+    MQ_BANK4_PORT: MQ_BANK4_RTN,
+    MQ_BANK5_PORT: MQ_BANK5_RTN,
     MQ_MERCHANT0_PORT: MERCHANT0_NAME,
 }
 
@@ -944,10 +944,6 @@ def _process_pacs002_message(message: pacs002Message):
                         interested_party=party
                     )
             return
-        else:
-            if DEBUG:
-                print(f"No matching pending message found for pacs.002 with EndToEndId: {end_to_end_id}. pacs.002 should always be related to a pacs.008. Ignoring this message.")
-            raise HTTPException(status_code=400, detail=f"No matching pending message found for pacs.002 with EndToEndId: {end_to_end_id}. pacs.002 should always be related to a pacs.008.")
         
     for completed in completed_messages:
         if completed.endToEndId == end_to_end_id:
